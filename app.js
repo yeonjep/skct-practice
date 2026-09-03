@@ -547,11 +547,9 @@
         skipBtn.dataset.act = "skip";
         skipBtn.textContent = "스킵";
         main.append(nextBtn, skipBtn);
-      } else if (state.skips[state.section] && state.skips[state.section][i]) {
-        const mark = document.createElement("span");
-        mark.className = "omr-all";
-        mark.textContent = "스킵";
-        main.appendChild(mark);
+      }
+      if (!isActive && state.skips[state.section] && state.skips[state.section][i]) {
+        row.classList.add("is-skipped");
       }
       row.append(num, main);
       frag.appendChild(row);
@@ -563,7 +561,7 @@
       if (qNow > SECTION_SIZE) els.answerProgress.textContent = `${currentSection().name} 완료`;
     }
     const active = els.omrList.querySelector(".omr-row.is-active");
-    if (active) active.scrollIntoView({ block: "nearest" });
+    if (active) active.scrollIntoView({ block: "nearest", behavior: "smooth" });
     updateFilled();
   }
 
@@ -1461,10 +1459,14 @@
     </section>`;
   }
 
-  function retryPractice() {
-    if (!confirm("지금 답안과 시간을 지우고 처음부터 다시 할까요?")) return;
-    closeModal(els.gradeModal);
+  function resetExam() {
+    if (!confirm("시간과 표기한 답을 모두 지우고 처음부터 할까요?")) return;
+    if (els.gradeModal && !els.gradeModal.hidden) closeModal(els.gradeModal);
     armExam(true);
+  }
+
+  function retryPractice() {
+    resetExam();
   }
 
   function gradeAll() {
@@ -1626,6 +1628,7 @@
     }
 
     if (els.skipSectionBtn) els.skipSectionBtn.addEventListener("click", skipWholeSection);
+    if ($("#timer-reset")) $("#timer-reset").addEventListener("click", resetExam);
     $("#preview-end").addEventListener("click", () => {
       addTimeToCurrent();
       state.running = false;
