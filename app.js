@@ -343,7 +343,7 @@
     clearTimeout(showToast.hideTimer);
     showToast.hideTimer = setTimeout(() => {
       els.sectionToast.hidden = true;
-    }, 4000);
+    }, 1000);
   }
 
   function onSectionTimeUp() {
