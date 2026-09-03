@@ -2054,6 +2054,7 @@
       els.recordsLead.textContent =
         "채점 전이어도 지금 답안을 저장할 수 있습니다. 이어 풀기 회차는 이름을 누르면 이어서 풉니다.";
     }
+    const hint = $("#resume-save-hint");
     if (hint) {
       hint.textContent = "채점 전이어도 됩니다. 표기한 답을 저장한 뒤, 나중에 이어서 풀 수 있습니다.";
     }
@@ -2065,7 +2066,11 @@
   }
 
   function init() {
-    fillStaticCopy();
+    try {
+      fillStaticCopy();
+    } catch (err) {
+      console.warn(err);
+    }
     bind();
     els.notepad.value = state.note;
     renderOMR();
