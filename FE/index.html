@@ -18,7 +18,7 @@
     <meta name="twitter:description" content="&#x200b;" />
     <link rel="canonical" href="https://yeonjep.github.io/skct-practice/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=13" />
+    <link rel="stylesheet" href="styles.css?v=14" />
   </head>
   <body>
     <div class="app">
@@ -230,7 +230,16 @@
           <button type="button" class="icon-btn" id="records-close">✕</button>
         </div>
         <div class="modal-body">
-          <p class="lead" id="records-lead">이름을 눌러 그때 답안과 틀린 문항을 다시 봅니다.</p>
+          <p class="lead" id="records-lead"></p>
+          <div class="record-save">
+            <label class="field-label" for="resume-record-name">지금 답안 저장</label>
+            <p class="save-hint" id="resume-save-hint"></p>
+            <div class="record-save-row">
+              <input id="resume-record-name" type="text" maxlength="80" placeholder="저장명" />
+              <button type="button" class="btn btn-primary" id="resume-record-save">저장</button>
+            </div>
+            <p class="record-save-msg" id="resume-record-msg" hidden></p>
+          </div>
           <div id="records-list" class="records-list"></div>
         </div>
         <div class="modal-foot">
@@ -267,6 +276,6 @@
     <script src="vendor/firebase-app-compat.js"></script>
     <script src="vendor/firebase-auth-compat.js"></script>
     <script src="vendor/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=16"></script>
+    <script src="app.js?v=17"></script>
   </body>
 </html>

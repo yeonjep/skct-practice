@@ -108,6 +108,8 @@
     sectionToast: $("#section-toast"),
     recordName: $("#record-name"),
     recordSaveMsg: $("#record-save-msg"),
+    resumeRecordName: $("#resume-record-name"),
+    resumeRecordMsg: $("#resume-record-msg"),
     recordsModal: $("#records-modal"),
     recordsList: $("#records-list"),
     recordsLead: $("#records-lead"),
@@ -1037,7 +1039,7 @@
         els.recordsLead.textContent =
           "구글 로그인하면 기록이 계정에 남아 다른 컴퓨터에서도 볼 수 있습니다. 로그인 전에는 이 브라우저에만 남습니다.";
       } else {
-        els.recordsLead.textContent = `${currentUser.displayName || "계정"}에 저장된 회차입니다. 이름을 눌러 불러오세요.`;
+        els.recordsLead.textContent = `${currentUser.displayName || "계정"}에 저장된 회차입니다. 이어 풀기 회차는 이름을 누르면 이어서 풉니다.`;
       }
     }
   }
@@ -1180,6 +1182,43 @@
     };
   }
 
+  function markedCountFor(answers) {
+    return SECTIONS.reduce(
+      (sum, sec) => sum + Object.values((answers && answers[sec.id]) || {}).filter(Boolean).length,
+      0
+    );
+  }
+
+  function examProgressSnapshot() {
+    const remaining = state.running
+      ? Math.max(0, state.remainingMs - (Date.now() - (state.lastTick || Date.now())))
+      : state.remainingMs;
+    return {
+      section: state.section,
+      qIndex: Number(state.qIndex) || 1,
+      examIndex: Number(state.examIndex) || 0,
+      remainingMs: remaining,
+      spentMs: { ...emptySpent(), ...(state.spentMs || {}) },
+      reviewMode: Boolean(state.reviewMode),
+    };
+  }
+
+  function recordStatus(rec) {
+    if (rec && rec.status) return rec.status;
+    if (rec && rec.progress && rec.progress.reviewMode === false) return "in-progress";
+    return "graded";
+  }
+
+  function showSaveMsg(el, text, ok) {
+    if (!el) {
+      showRecordMsg(text, ok);
+      return;
+    }
+    el.hidden = !text;
+    el.textContent = text || "";
+    el.className = `record-save-msg ${ok ? "is-ok" : "is-error"}`;
+  }
+
   function showRecordMsg(text, ok) {
     if (!els.recordSaveMsg) return;
     els.recordSaveMsg.hidden = !text;
@@ -1187,14 +1226,18 @@
     els.recordSaveMsg.className = `record-save-msg ${ok ? "is-ok" : "is-error"}`;
   }
 
-  async function saveCurrentRecord() {
+  async function saveCurrentRecord(source = "grade") {
+    if (state.running) addTimeToCurrent();
     collectKeysFromForm();
-    const name = (els.recordName && els.recordName.value.trim()) || "";
+    const nameInput = source === "records" ? els.resumeRecordName : els.recordName;
+    const msgEl = source === "records" ? els.resumeRecordMsg : els.recordSaveMsg;
+    const name = (nameInput && nameInput.value.trim()) || "";
     if (!name) {
-      showRecordMsg("저장명을 입력하세요.", false);
-      els.recordName && els.recordName.focus();
+      showSaveMsg(msgEl, "저장명을 입력하세요.", false);
+      nameInput && nameInput.focus();
       return;
     }
+    const progress = examProgressSnapshot();
     const record = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name,
@@ -1205,6 +1248,8 @@
       timings: JSON.parse(JSON.stringify(state.timings || emptyCountMap())),
       skips: JSON.parse(JSON.stringify(state.skips || emptyCountMap())),
       score: currentScoreSnapshot(),
+      progress,
+      status: progress.reviewMode ? "graded" : "in-progress",
     };
     try {
       const list = loadLocalRecords();
@@ -1213,16 +1258,17 @@
       if (currentUser) {
         await recordsRef().doc(record.id).set(record);
         cloudRecords = [record, ...cloudRecords.filter((r) => r.id !== record.id)];
-        showRecordMsg(`「${name}」을 계정에 저장했습니다. 다른 기기에서도 볼 수 있습니다.`, true);
+        showSaveMsg(msgEl, `「${name}」을 계정에 저장했습니다. 나중에 이어서 풀 수 있습니다.`, true);
       } else if (firebaseReady()) {
-        showRecordMsg(`「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
+        showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
       } else {
-        showRecordMsg(`「${name}」을 이 브라우저에 저장했습니다.`, true);
+        showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다.`, true);
       }
-      if (els.recordName) els.recordName.value = "";
+      if (nameInput) nameInput.value = roundTitle();
+      if (source === "records") renderRecords();
     } catch (err) {
       console.warn(err);
-      showRecordMsg("저장에 실패했습니다. 잠시 후 다시 시도해 주세요.", false);
+      showSaveMsg(msgEl, "저장에 실패했습니다. 잠시 후 다시 시도해 주세요.", false);
     }
   }
 
@@ -1238,12 +1284,21 @@
         const score = rec.score || {};
         const total = score.totalCorrect ?? "-";
         const keyed = score.totalKeyed || 100;
-        const marked = score.totalMarked ?? "-";
+        const marked = rec.score?.totalMarked ?? markedCountFor(rec.answers);
+        const status = recordStatus(rec);
+        const tag =
+          status === "in-progress"
+            ? '<span class="record-tag is-resume">이어 풀기</span>'
+            : '<span class="record-tag is-graded">채점</span>';
+        const detail =
+          status === "in-progress"
+            ? `${formatSavedAt(rec.savedAt)} · 표기 ${marked} / 100`
+            : `${formatSavedAt(rec.savedAt)} · 총점 ${total} / ${keyed} · 푼 문제 ${marked}`;
         return `
           <div class="record-item" data-id="${rec.id}">
             <button type="button" class="record-open" data-id="${rec.id}">
-              <strong>${escapeHtml(rec.name)}</strong>
-              <span>${formatSavedAt(rec.savedAt)} · 총점 ${total} / ${keyed} · 푼 문제 ${marked}</span>
+              <strong>${tag}${escapeHtml(rec.name)}</strong>
+              <span>${detail}</span>
             </button>
             <button type="button" class="record-del" data-id="${rec.id}">삭제</button>
           </div>`;
@@ -1261,19 +1316,51 @@
       }
     }
     renderRecords();
+    if (els.resumeRecordName && !els.resumeRecordName.value.trim()) {
+      els.resumeRecordName.value = roundTitle();
+    }
+    showSaveMsg(els.resumeRecordMsg, "", true);
     openModal(els.recordsModal);
   }
 
   function applyRecord(id) {
     const rec = recordsForUi().find((r) => r.id === id);
     if (!rec) return;
+    if (startedExam() && !confirm("지금 화면의 답을 덮고 이 회차를 불러올까요?")) return;
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
     state.note = rec.note || "";
     state.timings = { ...emptyCountMap(), ...(rec.timings || {}) };
     state.skips = { ...emptyCountMap(), ...(rec.skips || {}) };
-    state.reviewMode = true;
     if (els.notepad) els.notepad.value = state.note;
+    const progress = rec.progress;
+    const status = recordStatus(rec);
+    if (status === "in-progress") {
+      if (progress) {
+        state.section = progress.section || SECTIONS[0].id;
+        const idx = SECTIONS.findIndex((s) => s.id === state.section);
+        state.examIndex = Number.isInteger(progress.examIndex)
+          ? progress.examIndex
+          : idx >= 0
+            ? idx
+            : 0;
+        state.qIndex = Math.min(Math.max(Number(progress.qIndex) || 1, 1), SECTION_SIZE + 1);
+        state.remainingMs = Math.max(0, Number(progress.remainingMs) || sectionLimitMs(state.section));
+        state.spentMs = { ...emptySpent(), ...(progress.spentMs || {}) };
+      }
+      state.reviewMode = false;
+      state.running = false;
+      state.lastTick = null;
+      state.qStartedAt = null;
+      stopClock();
+      persist();
+      renderOMR();
+      renderTimer();
+      closeModal(els.recordsModal);
+      showToast(`「${rec.name}」을 불러왔습니다. 연습 시작을 누르면 이어서 풉니다.`);
+      return;
+    }
+    state.reviewMode = true;
     persist();
     renderOMR();
     closeModal(els.recordsModal);
@@ -1731,16 +1818,27 @@
     $("#grade-close").addEventListener("click", () => closeModal(els.gradeModal));
     $("#grade-cancel").addEventListener("click", () => closeModal(els.gradeModal));
     $("#grade-run").addEventListener("click", gradeAll);
-    $("#record-save").addEventListener("click", saveCurrentRecord);
+    $("#record-save").addEventListener("click", () => saveCurrentRecord("grade"));
+    if ($("#resume-record-save")) {
+      $("#resume-record-save").addEventListener("click", () => saveCurrentRecord("records"));
+    }
     if ($("#excel-new")) $("#excel-new").addEventListener("click", () => saveNewExcel().catch((err) => console.warn(err)));
     if ($("#excel-append")) $("#excel-append").addEventListener("click", () => appendExcel().catch((err) => console.warn(err)));
     if ($("#retry-practice")) $("#retry-practice").addEventListener("click", retryPractice);
     els.recordName.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        saveCurrentRecord();
+        saveCurrentRecord("grade");
       }
     });
+    if (els.resumeRecordName) {
+      els.resumeRecordName.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          saveCurrentRecord("records");
+        }
+      });
+    }
     $("#records-btn").addEventListener("click", openRecords);
     $("#login-btn").addEventListener("click", () => {
       signInGoogle().catch((err) => {
@@ -1941,6 +2039,7 @@
         <li><strong>진행</strong> 지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 갑니다.</li>
         <li><strong>타이머</strong> 과목당 15분, 총 75분. 시간이 끝나면 남은 문항은 스킵하고 다음 과목으로 갑니다.</li>
         <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다. 엑셀(CSV)로 저장하거나 같은 파일에 회차를 이어 붙입니다.</li>
+        <li><strong>기록</strong> 채점 전이어도 지금 답안을 저장할 수 있습니다. 기록에서 회차를 누르면 이어서 풉니다.</li>
         <li><strong>계산기 / 메모</strong> 오른쪽에서 계산하고 메모·그림을 남깁니다. 구글 로그인하면 회차가 계정에 남습니다.</li>
       </ol>`;
     }
@@ -1950,6 +2049,13 @@
     }
     if (els.gradeIntro) {
       els.gradeIntro.textContent = "각 과목 정답 20개를 붙여 넣으세요. 예: 12345214...";
+    }
+    if (els.recordsLead && !els.recordsLead.textContent.trim()) {
+      els.recordsLead.textContent =
+        "채점 전이어도 지금 답안을 저장할 수 있습니다. 이어 풀기 회차는 이름을 누르면 이어서 풉니다.";
+    }
+    if (hint) {
+      hint.textContent = "채점 전이어도 됩니다. 표기한 답을 저장한 뒤, 나중에 이어서 풀 수 있습니다.";
     }
     const excelHint = $("#excel-hint");
     if (excelHint) {

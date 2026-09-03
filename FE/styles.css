@@ -1079,8 +1079,30 @@ input {
   color: #15803d;
 }
 
-.record-save-msg.is-error {
-  color: #dc2626;
+.save-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.record-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.record-tag.is-resume {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.record-tag.is-graded {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .records-list {
