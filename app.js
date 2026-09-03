@@ -128,7 +128,7 @@
       const raw = { ...defaultState(), ...parsed };
       raw.answers = normalizeAnswers(raw.answers);
       if (!SECTIONS.some((s) => s.id === raw.section)) raw.section = "lang";
-      raw.answerKeys = { ...defaultState().answerKeys, ...(raw.answerKeys || {}) };
+      raw.answerKeys = defaultState().answerKeys;
       raw.timings = { ...emptyCountMap(), ...(raw.timings || {}) };
       raw.skips = { ...emptyCountMap(), ...(raw.skips || {}) };
       raw.sectionMinutes = { ...emptyMinutes(), ...(raw.sectionMinutes || {}) };
@@ -201,6 +201,7 @@
       remainingMs: state.running
         ? Math.max(0, state.remainingMs - (Date.now() - (state.lastTick || Date.now())))
         : state.remainingMs,
+      answerKeys: defaultState().answerKeys,
       paint: els.paint.width ? els.paint.toDataURL("image/png") : state.paint,
     };
     try {
@@ -930,6 +931,7 @@
     }
     if (els.excelBox) els.excelBox.hidden = true;
     showRecordMsg("", true);
+    if (els.recordName) els.recordName.value = roundTitle();
   }
 
   function renderGradeKeys() {
@@ -1915,7 +1917,35 @@
     window.addEventListener("beforeunload", persist);
   }
 
+  function fillStaticCopy() {
+    if (els.timerReady) {
+      els.timerReady.textContent = "시작 후 문항마다 시간을 잽니다. 다음·스킵하면 뒤로 가지 못합니다.";
+    }
+    const helpBody = $("#help-body");
+    if (helpBody) {
+      helpBody.innerHTML = `<ol>
+        <li><strong>진행</strong> 지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 갑니다.</li>
+        <li><strong>타이머</strong> 과목당 15분, 총 75분. 시간이 끝나면 남은 문항은 스킵하고 다음 과목으로 갑니다.</li>
+        <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다. 엑셀(CSV)로 저장하거나 같은 파일에 회차를 이어 붙입니다.</li>
+        <li><strong>계산기 / 메모</strong> 오른쪽에서 계산하고 메모·그림을 남깁니다. 구글 로그인하면 회차가 계정에 남습니다.</li>
+      </ol>`;
+    }
+    if (els.finishMessage) {
+      els.finishMessage.textContent =
+        "인지역량 5과목이 모두 끝났습니다. 과목당 15분씩, 총 75분이 지났습니다.";
+    }
+    if (els.gradeIntro) {
+      els.gradeIntro.textContent = "각 과목 정답 20개를 붙여 넣으세요. 예: 12345214...";
+    }
+    const excelHint = $("#excel-hint");
+    if (excelHint) {
+      excelHint.textContent =
+        "처음이면 새 엑셀로 저장하고, 다음부터는 같은 파일을 골라 회차를 이어 붙이세요. 엑셀에서 열리는 CSV입니다.";
+    }
+  }
+
   function init() {
+    fillStaticCopy();
     bind();
     els.notepad.value = state.note;
     renderOMR();

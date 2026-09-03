@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SKCT 연습창</title>
-    <meta name="description" content="" />
+    <meta name="description" content="&#x200b;" />
     <meta property="og:title" content="SKCT 연습창" />
-    <meta property="og:description" content="" />
+    <meta property="og:description" content="&#x200b;" />
     <meta property="og:url" content="https://yeonjep.github.io/skct-practice/" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="ko_KR" />
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="SKCT 연습창" />
-    <meta name="twitter:description" content="" />
+    <meta name="twitter:description" content="&#x200b;" />
     <link rel="canonical" href="https://yeonjep.github.io/skct-practice/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
     <link rel="stylesheet" href="styles.css?v=11" />
@@ -73,7 +73,7 @@
                 <input type="checkbox" id="alarm-on" checked />
                 알람음 울리기
               </label>
-              <p class="timer-ready" id="timer-ready">시작 후 문항마다 시간을 잽니다. 다음·스킵하면 뒤로 가지 못합니다.</p>
+              <p class="timer-ready" id="timer-ready"></p>
               <div class="timer-actions">
                 <button type="button" class="btn btn-primary" id="timer-toggle">연습 시작</button>
                 <button type="button" class="btn" id="timer-pause">일시정지</button>
@@ -160,27 +160,7 @@
           <h2>SKCT 연습창 사용법</h2>
           <button type="button" class="icon-btn" id="help-close">✕</button>
         </div>
-        <div class="modal-body">
-          <ol>
-            <li>
-              <strong>진행</strong>
-              지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 갑니다.
-            </li>
-            <li>
-              <strong>타이머</strong>
-              과목당 15분, 총 75분. 시간이 끝나면 남은 문항은 스킵하고 다음 과목으로 갑니다.
-            </li>
-            <li>
-              <strong>채점</strong>
-              정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다.
-              엑셀(CSV)로 저장하거나 같은 파일에 회차를 이어 붙입니다.
-            </li>
-            <li>
-              <strong>계산기 / 메모</strong>
-              오른쪽에서 계산하고 메모·그림을 남깁니다. 구글 로그인하면 회차가 계정에 남습니다.
-            </li>
-          </ol>
-        </div>
+        <div class="modal-body" id="help-body"></div>
         <div class="modal-foot">
           <button type="button" class="btn" id="help-later">닫기</button>
           <button type="button" class="btn btn-primary" id="help-never">다시 보지 않기</button>
@@ -195,9 +175,7 @@
           <button type="button" class="icon-btn" id="finish-close">✕</button>
         </div>
         <div class="modal-body">
-          <p class="lead finish-lead" id="finish-message">
-            인지역량 5과목이 모두 끝났습니다. 과목당 15분씩, 총 75분이 지났습니다.
-          </p>
+          <p class="lead finish-lead" id="finish-message"></p>
         </div>
         <div class="modal-foot">
           <button type="button" class="btn" id="finish-ok">닫기</button>
@@ -221,7 +199,7 @@
             </div>
             <p class="record-save-msg" id="record-save-msg" hidden></p>
           </div>
-          <p class="lead" id="grade-intro">각 과목 정답 20개를 붙여 넣으세요. 예: 12345214...</p>
+          <p class="lead" id="grade-intro"></p>
           <div class="grade-keys" id="grade-keys"></div>
           <div class="grade-summary" id="grade-summary" hidden></div>
           <div class="grade-detail" id="grade-detail" hidden></div>
@@ -231,7 +209,7 @@
               <button type="button" class="btn btn-primary" id="excel-append">기존 엑셀에 회차 추가</button>
               <button type="button" class="btn" id="excel-new">새 엑셀로 저장</button>
             </div>
-            <p class="excel-hint">처음이면 새 엑셀로 저장하고, 다음부터는 같은 파일을 골라 회차를 이어 붙이세요. 엑셀에서 열리는 CSV입니다.</p>
+            <p class="excel-hint" id="excel-hint"></p>
           </div>
         </div>
         <div class="modal-foot">
@@ -286,6 +264,6 @@
     <script src="vendor/firebase-app-compat.js"></script>
     <script src="vendor/firebase-auth-compat.js"></script>
     <script src="vendor/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>
