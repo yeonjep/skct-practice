@@ -1,6 +1,7 @@
 (() => {
   const STORAGE_KEY = "skct-practice-v1";
   const RECORDS_KEY = "skct-practice-records-v1";
+  const LAST_UID_KEY = "skct-practice-last-uid";
   const SECTION_SIZE = 20;
   const SECTIONS = [
     { id: "lang", name: "언어이해", short: "언어" },
@@ -53,12 +54,15 @@
     calcValue: "0",
     calcOverwrite: true,
     answerKeys: Object.fromEntries(SECTIONS.map((s) => [s.id, ""])),
+    recordId: null,
   });
 
   const $ = (sel) => document.querySelector(sel);
   const $$ = (sel) => [...document.querySelectorAll(sel)];
 
-  let state = load();
+  let state = defaultState();
+  let deskOwnerId = undefined;
+  let recordSaveBusy = false;
   let paintCtx = null;
   let drawing = false;
   let lastPoint = null;
@@ -124,42 +128,55 @@
   let cloudRecords = [];
   let lastGrade = null;
 
-  function load() {
+  function deskStorageKey(ownerId) {
+    return ownerId ? `${STORAGE_KEY}:u:${ownerId}` : `${STORAGE_KEY}:guest`;
+  }
+
+  function recordsStorageKey(ownerId) {
+    return ownerId ? `${RECORDS_KEY}:u:${ownerId}` : `${RECORDS_KEY}:guest`;
+  }
+
+  function parseDesk(parsed) {
+    const raw = { ...defaultState(), ...parsed };
+    raw.answers = normalizeAnswers(raw.answers);
+    if (!SECTIONS.some((s) => s.id === raw.section)) raw.section = "lang";
+    raw.answerKeys = defaultState().answerKeys;
+    raw.timings = { ...emptyCountMap(), ...(raw.timings || {}) };
+    raw.skips = { ...emptyCountMap(), ...(raw.skips || {}) };
+    raw.sectionMinutes = { ...emptyMinutes(), ...(raw.sectionMinutes || {}) };
+    raw.spentMs = { ...emptySpent(), ...(raw.spentMs || {}) };
+    SECTIONS.forEach((s) => {
+      raw.timings[s.id] = { ...(raw.timings[s.id] || {}) };
+      raw.skips[s.id] = { ...(raw.skips[s.id] || {}) };
+      raw.sectionMinutes[s.id] = Math.max(1, Number(raw.sectionMinutes[s.id]) || 15);
+      raw.spentMs[s.id] = Math.max(0, Number(raw.spentMs[s.id]) || 0);
+    });
+    raw.alarmOn = raw.alarmOn !== false;
+    raw.alarmEveryMin = Math.max(1, Number(raw.alarmEveryMin) || 15);
+    raw.alarmTickMs = Number(raw.alarmTickMs) || 0;
+    raw.qIndex = Math.min(Math.max(Number(raw.qIndex) || 1, 1), SECTION_SIZE + 1);
+    raw.qStartedAt = null;
+    raw.reviewMode = Boolean(raw.reviewMode);
+    raw.examMode = true;
+    raw.timerMinutes = 15;
+    raw.recordId = parsed.recordId || null;
+    raw.examIndex = Number.isInteger(raw.examIndex)
+      ? Math.min(Math.max(raw.examIndex, 0), SECTIONS.length - 1)
+      : 0;
+    if (parsed.examMode !== true || Number(parsed.remainingMs) > 3 * 60 * 60 * 1000) {
+      raw.examIndex = 0;
+      raw.section = SECTIONS[0].id;
+      raw.remainingMs = Math.max(1, Number(raw.sectionMinutes[SECTIONS[0].id]) || 15) * 60 * 1000;
+      raw.running = false;
+      raw.lastTick = null;
+    }
+    return raw;
+  }
+
+  function loadDesk(ownerId) {
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-      const raw = { ...defaultState(), ...parsed };
-      raw.answers = normalizeAnswers(raw.answers);
-      if (!SECTIONS.some((s) => s.id === raw.section)) raw.section = "lang";
-      raw.answerKeys = defaultState().answerKeys;
-      raw.timings = { ...emptyCountMap(), ...(raw.timings || {}) };
-      raw.skips = { ...emptyCountMap(), ...(raw.skips || {}) };
-      raw.sectionMinutes = { ...emptyMinutes(), ...(raw.sectionMinutes || {}) };
-      raw.spentMs = { ...emptySpent(), ...(raw.spentMs || {}) };
-      SECTIONS.forEach((s) => {
-        raw.timings[s.id] = { ...(raw.timings[s.id] || {}) };
-        raw.skips[s.id] = { ...(raw.skips[s.id] || {}) };
-        raw.sectionMinutes[s.id] = Math.max(1, Number(raw.sectionMinutes[s.id]) || 15);
-        raw.spentMs[s.id] = Math.max(0, Number(raw.spentMs[s.id]) || 0);
-      });
-      raw.alarmOn = raw.alarmOn !== false;
-      raw.alarmEveryMin = Math.max(1, Number(raw.alarmEveryMin) || 15);
-      raw.alarmTickMs = Number(raw.alarmTickMs) || 0;
-      raw.qIndex = Math.min(Math.max(Number(raw.qIndex) || 1, 1), SECTION_SIZE + 1);
-      raw.qStartedAt = null;
-      raw.reviewMode = Boolean(raw.reviewMode);
-      raw.examMode = true;
-      raw.timerMinutes = 15;
-      raw.examIndex = Number.isInteger(raw.examIndex)
-        ? Math.min(Math.max(raw.examIndex, 0), SECTIONS.length - 1)
-        : 0;
-      if (parsed.examMode !== true || Number(parsed.remainingMs) > 3 * 60 * 60 * 1000) {
-        raw.examIndex = 0;
-        raw.section = SECTIONS[0].id;
-        raw.remainingMs = Math.max(1, Number(raw.sectionMinutes[SECTIONS[0].id]) || 15) * 60 * 1000;
-        raw.running = false;
-        raw.lastTick = null;
-      }
-      return raw;
+      const parsed = JSON.parse(localStorage.getItem(deskStorageKey(ownerId)) || "{}");
+      return parseDesk(parsed);
     } catch {
       return defaultState();
     }
@@ -196,6 +213,7 @@
   }
 
   function persist() {
+    if (deskOwnerId === undefined) return;
     const snapshot = {
       ...state,
       running: false,
@@ -207,11 +225,11 @@
       paint: els.paint.width ? els.paint.toDataURL("image/png") : state.paint,
     };
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(deskStorageKey(deskOwnerId), JSON.stringify(snapshot));
     } catch {
       try {
         snapshot.paint = "";
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+        localStorage.setItem(deskStorageKey(deskOwnerId), JSON.stringify(snapshot));
       } catch {
         /* ignore quota */
       }
@@ -329,6 +347,7 @@
       state.qIndex = 1;
       state.reviewMode = false;
       lastGrade = null;
+      state.recordId = null;
       resetGradeForm();
     }
     state.qStartedAt = null;
@@ -993,30 +1012,85 @@
     els.gradeDetail.scrollIntoView({ block: "nearest" });
   }
 
+  function adoptLegacyDesk(uid) {
+    const legacy = localStorage.getItem(STORAGE_KEY);
+    if (!legacy) return;
+    const scoped = deskStorageKey(uid);
+    const last = localStorage.getItem(LAST_UID_KEY);
+    if (!localStorage.getItem(scoped) && (!last || last === uid)) {
+      localStorage.setItem(scoped, legacy);
+    }
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function applyDeskToUi() {
+    stopClock();
+    undoStack = [];
+    lastGrade = null;
+    state.running = false;
+    state.lastTick = null;
+    state.qStartedAt = null;
+    if (els.notepad) els.notepad.value = state.note || "";
+    renderOMR();
+    renderTimer();
+    renderCalc();
+    applyPaintStyle();
+    setupPaint();
+    resetGradeForm();
+    if (els.gradeModal && !els.gradeModal.hidden) closeModal(els.gradeModal);
+    renderRecords();
+    document.title = "SKCT 연습창";
+  }
+
+  function settleDesk(user) {
+    const nextId = user ? user.uid : null;
+    if (deskOwnerId !== undefined && deskOwnerId === nextId) {
+      currentUser = user;
+      renderAuth();
+      return false;
+    }
+    if (deskOwnerId !== undefined) persist();
+    currentUser = user;
+    if (user) {
+      adoptLegacyDesk(user.uid);
+      localStorage.setItem(LAST_UID_KEY, user.uid);
+    }
+    deskOwnerId = nextId;
+    state = loadDesk(deskOwnerId);
+    applyDeskToUi();
+    renderAuth();
+    return true;
+  }
+
   function firebaseReady() {
     const cfg = window.FIREBASE_CONFIG || {};
     return Boolean(window.firebase && cfg.apiKey && cfg.projectId);
   }
 
   function initFirebase() {
-    if (!firebaseReady() || firebase.apps.length) {
+    if (!firebaseReady()) {
+      settleDesk(null);
+      return;
+    }
+    if (firebase.apps.length) {
       renderAuth();
       return;
     }
     firebase.initializeApp(window.FIREBASE_CONFIG);
     firebase.auth().onAuthStateChanged(async (user) => {
-      currentUser = user;
-      renderAuth();
+      const switched = settleDesk(user);
       if (user) {
         try {
           cloudRecords = await fetchCloudRecords();
           await maybeMigrateLocalRecords();
+          cloudRecords = dedupeRecords(cloudRecords);
         } catch (err) {
           console.warn(err);
         }
       } else {
         cloudRecords = [];
       }
+      if (switched || user) renderRecords();
     });
   }
 
@@ -1037,7 +1111,7 @@
           "지금은 이 브라우저에만 저장됩니다. Firebase를 연결하면 구글 로그인으로 기록이 계정에 남습니다.";
       } else if (!currentUser) {
         els.recordsLead.textContent =
-          "구글 로그인하면 기록이 계정에 남아 다른 컴퓨터에서도 볼 수 있습니다. 로그인 전에는 이 브라우저에만 남습니다.";
+          "로그아웃하면 계정에서 풀던 답은 화면에서 지워집니다. 구글 로그인하면 그 계정에 저장한 회차만 보입니다.";
       } else {
         els.recordsLead.textContent = `${currentUser.displayName || "계정"}에 저장된 회차입니다. 이어 풀기 회차는 이름을 누르면 이어서 풉니다.`;
       }
@@ -1051,23 +1125,46 @@
   async function fetchCloudRecords() {
     if (!currentUser) return [];
     const snap = await recordsRef().orderBy("savedAt", "desc").get();
-    cloudRecords = snap.docs.map((doc) => doc.data());
+    cloudRecords = snap.docs.map((doc) => {
+      const data = doc.data() || {};
+      return { ...data, id: data.id || doc.id };
+    });
+    const kept = dedupeRecords(cloudRecords);
+    const keepIds = new Set(kept.map((r) => r.id));
+    const extras = cloudRecords.filter((r) => r && r.id && !keepIds.has(r.id));
+    if (extras.length) {
+      await Promise.all(extras.map((r) => recordsRef().doc(String(r.id)).delete().catch(() => {})));
+    }
+    cloudRecords = kept;
+    persistRecords(dedupeRecords([...kept, ...loadLocalRecords()]));
     return cloudRecords;
   }
 
   async function maybeMigrateLocalRecords() {
-    const local = loadLocalRecords();
-    if (!local.length || !currentUser) return;
+    if (!currentUser) return;
     const flag = `skct-migrated-${currentUser.uid}`;
     if (localStorage.getItem(flag)) return;
+    let legacy = [];
+    try {
+      const list = JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
+      legacy = Array.isArray(list) ? list : [];
+    } catch {
+      legacy = [];
+    }
+    if (!legacy.length) {
+      localStorage.setItem(flag, "1");
+      return;
+    }
     if (!confirm("이 브라우저에 있는 회차 기록을 구글 계정에도 올릴까요?")) {
       localStorage.setItem(flag, "1");
       return;
     }
-    for (const rec of local) {
-      await recordsRef().doc(rec.id).set(rec);
+    for (const rec of dedupeRecords(legacy)) {
+      await recordsRef().doc(String(rec.id)).set(firestoreSafe(rec));
     }
+    persistRecords(dedupeRecords([...legacy, ...loadLocalRecords()]));
     localStorage.setItem(flag, "1");
+    localStorage.removeItem(RECORDS_KEY);
     cloudRecords = await fetchCloudRecords();
   }
 
@@ -1125,20 +1222,27 @@
   }
 
   async function signOutGoogle() {
+    if (deskOwnerId !== undefined) persist();
     if (firebaseReady()) await firebase.auth().signOut();
   }
 
-  function loadLocalRecords() {
+  function readRecordList(key) {
     try {
-      const list = JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
+      const list = JSON.parse(localStorage.getItem(key) || "[]");
       return Array.isArray(list) ? list : [];
     } catch {
       return [];
     }
   }
 
+  function loadLocalRecords() {
+    if (deskOwnerId === undefined) return [];
+    return readRecordList(recordsStorageKey(deskOwnerId));
+  }
+
   function persistRecords(list) {
-    localStorage.setItem(RECORDS_KEY, JSON.stringify(list));
+    if (deskOwnerId === undefined) return;
+    localStorage.setItem(recordsStorageKey(deskOwnerId), JSON.stringify(list));
   }
 
   function firestoreSafe(value) {
@@ -1150,17 +1254,35 @@
     );
   }
 
+  function recordNameKey(name) {
+    return String(name || "").trim();
+  }
+
+  function dedupeRecords(list) {
+    const byName = new Map();
+    [...(list || [])]
+      .filter((r) => r && r.id)
+      .sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")))
+      .forEach((r) => {
+        const key = recordNameKey(r.name) || String(r.id);
+        if (!byName.has(key)) byName.set(key, r);
+      });
+    return [...byName.values()].sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
+  }
+
   function recordsForUi() {
-    const local = loadLocalRecords();
-    if (!currentUser) return local;
-    const byId = new Map();
-    cloudRecords.forEach((r) => {
-      if (r && r.id) byId.set(r.id, r);
-    });
-    local.forEach((r) => {
-      if (r && r.id && !byId.has(r.id)) byId.set(r.id, r);
-    });
-    return [...byId.values()].sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
+    if (currentUser) return dedupeRecords([...cloudRecords, ...loadLocalRecords()]);
+    return dedupeRecords(loadLocalRecords());
+  }
+
+  function findRecordToUpdate(name) {
+    const list = recordsForUi();
+    if (state.recordId) {
+      const byId = list.find((r) => r.id === state.recordId);
+      if (byId) return byId;
+    }
+    const key = recordNameKey(name);
+    return list.find((r) => recordNameKey(r.name) === key) || null;
   }
 
   function escapeHtml(s) {
@@ -1245,59 +1367,69 @@
   }
 
   async function saveCurrentRecord(source = "grade") {
-    if (state.running) addTimeToCurrent();
-    collectKeysFromForm();
-    const nameInput = source === "records" ? els.resumeRecordName : els.recordName;
-    const msgEl = source === "records" ? els.resumeRecordMsg : els.recordSaveMsg;
-    const name = (nameInput && nameInput.value.trim()) || "";
-    if (!name) {
-      showSaveMsg(msgEl, "저장명을 입력하세요.", false);
-      nameInput && nameInput.focus();
-      return;
-    }
-    const progress = examProgressSnapshot();
-    const record = firestoreSafe({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name,
-      savedAt: new Date().toISOString(),
-      answers: state.answers || emptyAnswers(),
-      answerKeys: { ...defaultState().answerKeys, ...(state.answerKeys || {}) },
-      note: state.note || "",
-      timings: state.timings || emptyCountMap(),
-      skips: state.skips || emptyCountMap(),
-      score: currentScoreSnapshot(),
-      progress,
-      status: progress.reviewMode ? "graded" : "in-progress",
-    });
+    if (recordSaveBusy) return;
+    recordSaveBusy = true;
     try {
-      const list = loadLocalRecords();
-      list.unshift(record);
-      persistRecords(list);
-    } catch (err) {
-      console.warn(err);
-      showSaveMsg(msgEl, "이 브라우저에 저장하지 못했습니다. 저장 공간이 부족할 수 있습니다.", false);
-      return;
-    }
-    if (currentUser) {
+      if (state.running) addTimeToCurrent();
+      collectKeysFromForm();
+      const nameInput = source === "records" ? els.resumeRecordName : els.recordName;
+      const msgEl = source === "records" ? els.resumeRecordMsg : els.recordSaveMsg;
+      const name = (nameInput && nameInput.value.trim()) || "";
+      if (!name) {
+        showSaveMsg(msgEl, "저장명을 입력하세요.", false);
+        nameInput && nameInput.focus();
+        return;
+      }
+      const progress = examProgressSnapshot();
+      const existing = findRecordToUpdate(name);
+      const record = firestoreSafe({
+        id: existing ? existing.id : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        savedAt: new Date().toISOString(),
+        answers: state.answers || emptyAnswers(),
+        answerKeys: { ...defaultState().answerKeys, ...(state.answerKeys || {}) },
+        note: state.note || "",
+        timings: state.timings || emptyCountMap(),
+        skips: state.skips || emptyCountMap(),
+        score: currentScoreSnapshot(),
+        progress,
+        status: progress.reviewMode ? "graded" : "in-progress",
+      });
+      state.recordId = record.id;
       try {
-        await recordsRef().doc(String(record.id)).set(record);
-        cloudRecords = [record, ...cloudRecords.filter((r) => r.id !== record.id)];
-        showSaveMsg(msgEl, `「${name}」을 계정에 저장했습니다. 나중에 이어서 풀 수 있습니다.`, true);
+        const key = recordNameKey(name);
+        const list = dedupeRecords([
+          record,
+          ...loadLocalRecords().filter((r) => r && r.id !== record.id && recordNameKey(r.name) !== key),
+        ]);
+        persistRecords(list);
       } catch (err) {
         console.warn(err);
-        showSaveMsg(
-          msgEl,
-          `「${name}」을 이 브라우저에 저장했습니다. 계정 저장은 실패해서, 이 기기에서만 이어서 풀 수 있습니다.`,
-          true
-        );
+        showSaveMsg(msgEl, "저장하지 못했습니다. 잠시 후 다시 시도해 주세요.", false);
+        return;
       }
-    } else if (firebaseReady()) {
-      showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
-    } else {
-      showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다.`, true);
+      if (currentUser) {
+        try {
+          const key = recordNameKey(name);
+          const extras = cloudRecords.filter((r) => r && r.id !== record.id && recordNameKey(r.name) === key);
+          await recordsRef().doc(String(record.id)).set(record);
+          await Promise.all(
+            extras.map((r) => recordsRef().doc(String(r.id)).delete().catch(() => {}))
+          );
+          cloudRecords = dedupeRecords([
+            record,
+            ...cloudRecords.filter((r) => r && r.id !== record.id && recordNameKey(r.name) !== key),
+          ]);
+        } catch (err) {
+          console.warn(err);
+        }
+      }
+      showSaveMsg(msgEl, `「${name}」을 저장했습니다.`, true);
+      persist();
+      renderRecords();
+    } finally {
+      recordSaveBusy = false;
     }
-    if (nameInput) nameInput.value = roundTitle();
-    renderRecords();
   }
 
   function renderRecords() {
@@ -1355,6 +1487,7 @@
     const rec = recordsForUi().find((r) => r.id === id);
     if (!rec) return;
     if (startedExam() && !confirm("지금 화면의 답을 덮고 이 회차를 불러올까요?")) return;
+    state.recordId = rec.id;
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
     state.note = rec.note || "";
