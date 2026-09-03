@@ -3,11 +3,11 @@
   const RECORDS_KEY = "skct-practice-records-v1";
   const SECTION_SIZE = 20;
   const SECTIONS = [
-    { id: "lang", name: "언어이해" },
-    { id: "data", name: "자료해석" },
-    { id: "math", name: "창의수리" },
-    { id: "verbal", name: "언어추리" },
-    { id: "seq", name: "수열추리" },
+    { id: "lang", name: "언어이해", short: "언어" },
+    { id: "data", name: "자료해석", short: "자료" },
+    { id: "math", name: "창의수리", short: "창의" },
+    { id: "verbal", name: "언어추리", short: "추리" },
+    { id: "seq", name: "수열추리", short: "수열" },
   ];
 
   const emptyAnswers = () =>
@@ -492,7 +492,8 @@
       if (!state.reviewMode && idx < state.examIndex) btn.classList.add("is-done");
       if (!state.reviewMode && idx > state.examIndex) btn.classList.add("is-locked");
       const filled = Object.values(state.answers[sec.id] || {}).filter(Boolean).length;
-      btn.innerHTML = `<span>${sec.name}</span><em>${filled}/20</em>`;
+      btn.title = sec.name;
+      btn.innerHTML = `<span>${sec.short || sec.name}</span><em>${filled}/20</em>`;
       frag.appendChild(btn);
     });
     els.omrSections.replaceChildren(frag);
