@@ -1658,8 +1658,6 @@
       stopClock();
       renderTimer();
       persist();
-      ensureAudio();
-      if (state.alarmOn) beep("finish");
       if (els.gradeIntro) {
         els.gradeIntro.textContent =
           "채점하려면 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
