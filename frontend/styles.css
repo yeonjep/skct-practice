@@ -52,8 +52,9 @@ input {
 .topbar {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: space-between;
   gap: 8px 12px;
   padding: 8px 10px;
   background: linear-gradient(180deg, var(--navy) 0%, var(--navy-2) 100%);
@@ -155,7 +156,10 @@ input {
 
 .top-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .btn,
