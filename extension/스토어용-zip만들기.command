@@ -6,8 +6,8 @@ rm -f dist/skct-practice.zip
 STAGE="$(mktemp -d)"
 cp extension/manifest.json extension/background.js "$STAGE/"
 cp -R extension/icons "$STAGE/icons"
-cp frontend/index.html frontend/styles.css frontend/app.js frontend/firebase-config.js frontend/privacy.html "$STAGE/"
-cp -R frontend/vendor "$STAGE/vendor"
+cp FE/index.html FE/styles.css FE/app.js FE/firebase-config.js FE/privacy.html "$STAGE/"
+cp -R FE/vendor "$STAGE/vendor"
 (
   cd "$STAGE"
   zip -r "$ROOT/dist/skct-practice.zip" \

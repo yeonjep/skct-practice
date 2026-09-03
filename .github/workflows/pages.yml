@@ -25,9 +25,9 @@ jobs:
       - name: Stamp a new asset version on every deploy
         run: |
           HASH="${GITHUB_SHA::7}"
-          sed -i "s/?v=[A-Za-z0-9._-]*/?v=${HASH}/g" frontend/index.html
+          sed -i "s/?v=[A-Za-z0-9._-]*/?v=${HASH}/g" FE/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend
+          path: FE
       - id: deployment
         uses: actions/deploy-pages@v4
