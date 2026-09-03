@@ -425,6 +425,18 @@
   }
 
   let audioCtx = null;
+  let beepGen = 0;
+
+  function muteAlarms() {
+    beepGen += 1;
+    if (audioCtx && audioCtx.state !== "closed") {
+      audioCtx.suspend().catch(() => {});
+    }
+  }
+
+  function allowAlarms() {
+    beepGen += 1;
+  }
 
   function ensureAudio() {
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -448,9 +460,11 @@
   }
 
   function beep(kind = "section") {
+    const gen = beepGen;
     const ctx = ensureAudio();
     if (!ctx) return;
     const play = () => {
+      if (gen !== beepGen) return;
       const t = ctx.currentTime;
       if (kind === "start") {
         tone(ctx, 740, t, 0.12, 0.12);
@@ -1619,6 +1633,7 @@
         state.reviewMode = false;
       }
       if (state.remainingMs <= 0 && state.examIndex >= SECTIONS.length - 1) armExam(true);
+      allowAlarms();
       state.running = true;
       state.lastTick = Date.now();
       ensureAudio();
@@ -1652,10 +1667,11 @@
     if (els.skipSectionBtn) els.skipSectionBtn.addEventListener("click", skipWholeSection);
     if ($("#timer-reset")) $("#timer-reset").addEventListener("click", resetExam);
     $("#preview-end").addEventListener("click", () => {
+      muteAlarms();
+      stopClock();
       addTimeToCurrent();
       state.running = false;
       state.lastTick = null;
-      stopClock();
       renderTimer();
       persist();
       if (els.gradeIntro) {
