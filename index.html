@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SKCT 연습창</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">SKCT</span>
+          <span class="brand-sub">연습창</span>
+        </div>
+
+        <div class="timer-block">
+          <div class="exam-status">
+            <span class="exam-label">실전 5과목</span>
+            <span class="exam-subject" id="exam-subject">언어이해</span>
+            <span class="exam-step" id="exam-step">1 / 5</span>
+          </div>
+          <div class="timer-face" id="timer-face">
+            <span class="timer-now" id="timer-now">15분 00초</span>
+            <span class="timer-total" id="timer-total">/ 15분</span>
+          </div>
+          <div class="exam-overall" id="exam-overall">전체 00분 00초 / 75분</div>
+          <div class="timer-actions">
+            <button type="button" class="btn btn-primary" id="timer-toggle">시작</button>
+            <button type="button" class="btn" id="timer-reset">리셋</button>
+            <button type="button" class="btn" id="preview-end" title="시험이 끝난 뒤 채점 화면을 바로 엽니다">종료 미리보기</button>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button type="button" class="icon-btn" id="records-btn" title="저장한 회차">기록</button>
+          <button type="button" class="icon-btn" id="omr-toggle" title="OMR 숨기기/보이기">OMR</button>
+          <button type="button" class="icon-btn" id="help-btn" title="사용 설명">?</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <aside class="omr-panel" id="omr-panel">
+          <div class="panel-head">
+            <h2>OMR 답안지</h2>
+          </div>
+          <div class="omr-sections" id="omr-sections"></div>
+          <div class="omr-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="grade-btn">채점</button>
+            <button type="button" class="btn btn-sm" id="omr-reset">이 과목 Reset</button>
+          </div>
+          <div class="omr-list" id="omr-list"></div>
+          <div class="omr-footer">
+            이 과목 <strong id="omr-filled">0</strong> / 20
+            <span class="omr-all">전체 <span id="omr-all-filled">0</span> / 100</span>
+          </div>
+        </aside>
+
+        <section class="desk">
+          <div class="notepad-card">
+            <div class="panel-head notepad-toolbar">
+              <div class="mode-switch" role="tablist">
+                <button type="button" class="mode-btn is-active" data-mode="note" role="tab">메모장</button>
+                <button type="button" class="mode-btn" data-mode="paint" role="tab">그림판</button>
+              </div>
+              <div class="note-tools">
+                <div class="paint-tools" id="paint-tools" hidden>
+                  <button type="button" class="swatch is-active" data-color="#111827" title="검정"></button>
+                  <button type="button" class="swatch" data-color="#dc2626" title="빨강"></button>
+                  <button type="button" class="swatch" data-color="#2563eb" title="파랑"></button>
+                  <button type="button" class="swatch" data-color="#16a34a" title="초록"></button>
+                  <button type="button" class="tool-btn" id="eraser-btn" title="지우개">지우개</button>
+                  <label class="stroke-label">
+                    굵기
+                    <input type="range" id="stroke-width" min="1" max="16" value="3" />
+                  </label>
+                  <button type="button" class="btn btn-sm" id="undo-btn">되돌리기</button>
+                </div>
+                <button type="button" class="btn btn-sm danger" id="clear-surface">전체 지우기</button>
+              </div>
+            </div>
+            <div class="surface">
+              <textarea
+                id="notepad"
+                class="notepad"
+                spellcheck="false"
+              ></textarea>
+              <div class="paint-wrap" id="paint-wrap" hidden>
+                <canvas id="paint"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="calc-card">
+            <div class="panel-head">
+              <h2>계산기</h2>
+              <span class="hint">숫자패드로도 입력됩니다</span>
+            </div>
+            <div class="calc-display">
+              <div class="calc-expr" id="calc-expr"></div>
+              <div class="calc-value" id="calc-value">0</div>
+            </div>
+            <div class="calc-keys" id="calc-keys">
+              <button type="button" data-key="(">(</button>
+              <button type="button" data-key=")">)</button>
+              <button type="button" data-key="%">%</button>
+              <button type="button" class="fn" data-key="C">C</button>
+              <button type="button" class="fn" data-key="AC">AC</button>
+              <button type="button" class="fn" data-key="±">+/-</button>
+              <button type="button" class="op" data-key="÷">÷</button>
+              <button type="button" class="op" data-key="×">×</button>
+              <button type="button" data-key="7">7</button>
+              <button type="button" data-key="8">8</button>
+              <button type="button" data-key="9">9</button>
+              <button type="button" class="op" data-key="-">−</button>
+              <button type="button" data-key="4">4</button>
+              <button type="button" data-key="5">5</button>
+              <button type="button" data-key="6">6</button>
+              <button type="button" class="op" data-key="+">+</button>
+              <button type="button" data-key="1">1</button>
+              <button type="button" data-key="2">2</button>
+              <button type="button" data-key="3">3</button>
+              <button type="button" class="eq" data-key="=">=</button>
+              <button type="button" class="zero" data-key="0">0</button>
+              <button type="button" class="dot" data-key=".">.</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="section-toast" hidden></div>
+
+    <div class="modal" id="help-modal" hidden>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>SKCT 연습창 사용법</h2>
+          <button type="button" class="icon-btn" id="help-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="lead">
+            PDF 칸은 빼 두었습니다. 전자책 뷰어를 옆에 띄우고, 이 창은 계산기·메모장·그림판·OMR만 쓰세요.
+            적어 둔 내용과 그림, 마킹은 이 Mac에 저장되어 창을 닫아도 사라지지 않습니다.
+          </p>
+          <ol>
+            <li>
+              <strong>타이머</strong>
+              시작을 누르면 과목당 15분, 총 75분입니다. 15분이 끝나면 알람과 함께 OMR이 다음 과목으로 넘어가고, 5과목이 끝나면 종료 안내가 뜹니다.
+            </li>
+            <li>
+              <strong>OMR</strong>
+              과목 버튼으로 언어이해·자료해석·창의수리·언어추리·수열추리를 오가며 각 20문항을 마킹하세요.
+              다른 과목으로 넘어가도 이전 답은 그대로 남아 있습니다. 같은 칸을 다시 누르면 취소됩니다.
+            </li>
+            <li>
+              <strong>채점</strong>
+              시험이 끝나거나 채점 버튼을 누르면 5과목 정답 칸이 열립니다. 회차 이름을 붙여 저장할 수 있고, 위쪽 기록에서 다시 불러올 수 있습니다.
+            </li>
+            <li>
+              <strong>계산기</strong>
+              클릭 또는 숫자패드로 입력하세요. Enter는 =, Backspace는 한 글자 삭제, Esc는 C입니다.
+              메모장에 커서가 있을 때는 계산기로 가지 않습니다.
+            </li>
+            <li>
+              <strong>메모장 / 그림판</strong>
+              탭으로 전환합니다. 그림판은 색·굵기·지우개·되돌리기를 지원하고, 커서가 십자로 보입니다.
+            </li>
+          </ol>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="help-later">닫기</button>
+          <button type="button" class="btn btn-primary" id="help-never">다시 보지 않기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="finish-modal" hidden>
+      <div class="modal-card finish-card">
+        <div class="modal-head">
+          <h2>시험 종료</h2>
+          <button type="button" class="icon-btn" id="finish-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="lead finish-lead" id="finish-message">
+            인지역량 5과목이 모두 끝났습니다. 과목당 15분씩, 총 75분이 지났습니다.
+          </p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="finish-ok">닫기</button>
+          <button type="button" class="btn btn-primary" id="finish-grade">채점하기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="grade-modal" hidden>
+      <div class="modal-card grade-card grade-card-wide">
+        <div class="modal-head">
+          <h2>5과목 채점</h2>
+          <button type="button" class="icon-btn" id="grade-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="record-save">
+            <label class="field-label" for="record-name">이 회차 이름</label>
+            <div class="record-save-row">
+              <input id="record-name" type="text" maxlength="80" placeholder="저장명을 입력하세요" />
+              <button type="button" class="btn btn-primary" id="record-save">저장</button>
+            </div>
+            <p class="record-save-msg" id="record-save-msg" hidden></p>
+          </div>
+          <p class="lead" id="grade-intro">각 과목 정답 20개를 붙여 넣으세요. 예: 12345214...</p>
+          <div class="grade-keys" id="grade-keys"></div>
+          <div class="grade-summary" id="grade-summary" hidden></div>
+          <div class="grade-detail" id="grade-detail" hidden></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="grade-cancel">닫기</button>
+          <button type="button" class="btn btn-primary" id="grade-run">전체 채점</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="records-modal" hidden>
+      <div class="modal-card grade-card-wide">
+        <div class="modal-head">
+          <h2>저장한 회차</h2>
+          <button type="button" class="icon-btn" id="records-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="lead">이름을 눌러 그때 답안과 정답을 다시 불러옵니다.</p>
+          <div id="records-list" class="records-list"></div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="records-done">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
