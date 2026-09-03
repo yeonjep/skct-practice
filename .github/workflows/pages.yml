@@ -22,6 +22,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Stamp a new asset version on every deploy
+        run: |
+          HASH="${GITHUB_SHA::7}"
+          sed -i "s/?v=[A-Za-z0-9._-]*/?v=${HASH}/g" frontend/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: frontend
