@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "SKCT 연습창",
+  "short_name": "SKCT",
+  "version": "1.0.0",
+  "description": "SKCT 실전 연습용 시험 데스크. 타이머, OMR, 계산기, 메모장, 그림판을 한 화면에 두고 구글 계정에 회차를 저장합니다.",
+  "homepage_url": "https://yeonjep.github.io/skct-practice/",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "SKCT 연습창 열기",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["identity"],
+  "host_permissions": [
+    "https://accounts.google.com/",
+    "https://securetoken.googleapis.com/",
+    "https://identitytoolkit.googleapis.com/",
+    "https://firestore.googleapis.com/",
+    "https://www.googleapis.com/"
+  ],
+  "offline_enabled": true
+}

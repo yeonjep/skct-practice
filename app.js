@@ -869,9 +869,52 @@
     cloudRecords = await fetchCloudRecords();
   }
 
+  function isExtensionPage() {
+    try {
+      return Boolean(chrome?.runtime?.getURL) && location.protocol === "chrome-extension:";
+    } catch {
+      return false;
+    }
+  }
+
+  async function signInGoogleExtension() {
+    const clientId = (window.FIREBASE_CONFIG || {}).googleClientId;
+    if (!clientId || !chrome.identity) {
+      alert("확장 로그인을 위해 Firebase 콘솔의 웹 클라이언트 ID가 필요합니다.");
+      return;
+    }
+    const redirectURL = chrome.identity.getRedirectURL();
+    const authURL =
+      "https://accounts.google.com/o/oauth2/v2/auth" +
+      `?client_id=${encodeURIComponent(clientId)}` +
+      "&response_type=token" +
+      `&redirect_uri=${encodeURIComponent(redirectURL)}` +
+      `&scope=${encodeURIComponent("openid email profile")}` +
+      "&prompt=select_account";
+    const responseUrl = await new Promise((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow({ url: authURL, interactive: true }, (url) => {
+        if (chrome.runtime.lastError || !url) {
+          reject(new Error(chrome.runtime.lastError?.message || "로그인을 취소했습니다."));
+          return;
+        }
+        resolve(url);
+      });
+    });
+    const parsed = new URL(responseUrl);
+    const params = new URLSearchParams(parsed.hash.replace(/^#/, "") || parsed.search.replace(/^\?/, ""));
+    const accessToken = params.get("access_token");
+    if (!accessToken) throw new Error("구글 토큰을 받지 못했습니다.");
+    const cred = firebase.auth.GoogleAuthProvider.credential(null, accessToken);
+    await firebase.auth().signInWithCredential(cred);
+  }
+
   async function signInGoogle() {
     if (!firebaseReady()) {
       alert("아직 구글 로그인이 연결되지 않았습니다. 관리자가 Firebase 설정을 넣어야 합니다.");
+      return;
+    }
+    if (isExtensionPage()) {
+      await signInGoogleExtension();
       return;
     }
     const provider = new firebase.auth.GoogleAuthProvider();

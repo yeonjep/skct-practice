@@ -6,4 +6,6 @@ window.FIREBASE_CONFIG = {
   storageBucket: "skct-practice.firebasestorage.app",
   messagingSenderId: "566597624067",
   appId: "1:566597624067:web:f20d146b71c70c28344936",
+  // Authentication → Google → 웹 SDK 구성 → 웹 클라이언트 ID
+  googleClientId: "",
 };

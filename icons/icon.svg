@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#15233d"/>
+  <rect x="18" y="22" width="92" height="84" rx="12" fill="#1e3256"/>
+  <text x="64" y="58" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="28" font-weight="800" fill="#ffffff">SKCT</text>
+  <rect x="32" y="70" width="64" height="8" rx="4" fill="#e11d48"/>
+  <circle cx="40" cy="92" r="5" fill="#ffffff"/>
+  <circle cx="56" cy="92" r="5" fill="#ffffff"/>
+  <circle cx="72" cy="92" r="5" fill="#e11d48"/>
+  <circle cx="88" cy="92" r="5" fill="#ffffff"/>
+</svg>
