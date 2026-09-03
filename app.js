@@ -322,9 +322,11 @@
       state.answers = emptyAnswers();
       state.timings = emptyCountMap();
       state.skips = emptyCountMap();
+      state.answerKeys = defaultState().answerKeys;
       state.qIndex = 1;
       state.reviewMode = false;
       lastGrade = null;
+      resetGradeForm();
     }
     state.qStartedAt = null;
     stopClock();
@@ -911,6 +913,23 @@
     $$("#grade-keys textarea[data-section]").forEach((area) => {
       state.answerKeys[area.dataset.section] = area.value;
     });
+  }
+
+  function resetGradeForm() {
+    renderGradeKeys();
+    if (els.gradeIntro) {
+      els.gradeIntro.textContent = "각 과목 정답 20개를 붙여 넣으세요. 예: 12345214...";
+    }
+    if (els.gradeSummary) {
+      els.gradeSummary.hidden = true;
+      els.gradeSummary.innerHTML = "";
+    }
+    if (els.gradeDetail) {
+      els.gradeDetail.hidden = true;
+      els.gradeDetail.innerHTML = "";
+    }
+    if (els.excelBox) els.excelBox.hidden = true;
+    showRecordMsg("", true);
   }
 
   function renderGradeKeys() {
