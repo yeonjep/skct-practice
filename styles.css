@@ -1212,12 +1212,79 @@ input {
   font-size: 13px;
 }
 
-.result-table .grade-sub-btn {
-  display: inline;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
+.q-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 12px 0 8px;
+}
+
+.q-legend span {
+  padding: 2px 8px;
+  border-radius: 999px;
   font-weight: 700;
-  color: var(--ink);
+}
+
+.q-legend .ok { background: #ecfdf3; color: #166534; }
+.q-legend .bad { background: #fef2f2; color: #b91c1c; }
+.q-legend .skip { background: #fffbeb; color: #92400e; }
+.q-legend .mute { background: #f1f5f9; color: #475569; }
+
+.q-grid-block {
+  margin: 12px 0 16px;
+}
+
+.q-grid-block h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.q-grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.q-grid td {
+  padding: 2px;
+  vertical-align: stretch;
+}
+
+.q-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+  min-height: 52px;
+  padding: 4px 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.q-cell strong {
+  font-size: 12px;
+}
+
+.q-cell em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.q-cell.ok { background: #ecfdf3; border-color: #bbf7d0; }
+.q-cell.bad { background: #fef2f2; border-color: #fecaca; }
+.q-cell.skip { background: #fffbeb; border-color: #fde68a; }
+.q-cell.mute { background: #f8fafc; }
+
+.result-table .q-cell.grade-sub-btn,
+.q-cell.grade-sub-btn {
+  display: flex;
+  border-radius: 8px;
 }

@@ -894,32 +894,13 @@
     state.section = id;
     renderOMR();
     applyOmrHighlight(result);
-    const rows = result.items
-      .map((it) => {
-        const label =
-          it.status === "correct"
-            ? "맞음"
-            : it.status === "wrong"
-              ? "틀림"
-              : it.status === "skip"
-                ? "스킵"
-                : it.status === "blank"
-                  ? "미표기"
-                  : "정답없음";
-        const cls =
-          it.status === "correct" ? "ok" : it.status === "wrong" || it.status === "blank" || it.status === "skip" ? "bad" : "mute";
-        const mine = it.mine || "-";
-        const ans = it.ans || "-";
-        return `<li class="${cls}"><strong>${it.q}</strong> ${label} · 내 답 ${mine} / 정답 ${ans}</li>`;
-      })
-      .join("");
     els.gradeDetail.hidden = false;
     els.gradeDetail.innerHTML = `
       <div class="grade-detail-head">
         <strong>${sec.name}</strong>
         맞음 ${result.correct} · 틀림 ${result.wrongMarked} · 미표기 ${result.blank}
       </div>
-      <ol class="grade-detail-list">${rows}</ol>`;
+      ${questionGridHtml({ id: sec.id, name: sec.name, items: result.items })}`;
     els.gradeDetail.scrollIntoView({ block: "nearest" });
   }
 
@@ -1400,6 +1381,32 @@
     showToast(`${SECTIONS[next].name}으로 건너뜁니다.`);
   }
 
+  function questionGridHtml(report) {
+    const items = report.items || [];
+    const cell = (it) => {
+      const cls =
+        it.status === "correct"
+          ? "ok"
+          : it.status === "wrong"
+            ? "bad"
+            : it.status === "skip"
+              ? "skip"
+              : "mute";
+      return `<td>
+        <button type="button" class="q-cell ${cls} grade-sub-btn" data-section="${report.id}" title="${report.name} ${it.q}번">
+          <strong>${it.q}</strong>
+          <span>${it.mine || "-"} / ${it.ans || "-"}</span>
+          <em>${(Number(it.ms || 0) / 1000).toFixed(1)}s</em>
+        </button>
+      </td>`;
+    };
+    const row = (from) => `<tr>${items.slice(from, from + 10).map(cell).join("")}</tr>`;
+    return `<section class="q-grid-block">
+      <h3>${escapeHtml(report.name)}</h3>
+      <table class="q-grid">${row(0)}${row(10)}</table>
+    </section>`;
+  }
+
   function retryPractice() {
     if (!confirm("지금 답안과 시간을 지우고 처음부터 다시 할까요?")) return;
     closeModal(els.gradeModal);
@@ -1463,20 +1470,7 @@
             .join("")}
         </tbody>
       </table>`;
-    const wrongs = rows.flatMap((r) =>
-      (r.items || [])
-        .filter((it) => it.status === "wrong" || it.status === "blank" || it.status === "skip")
-        .map((it) => ({ ...it, name: r.name, id: r.id }))
-    );
-    const wrongHtml = wrongs.length
-      ? `<div class="wrong-block"><h3>틀린·스킵·미표기 문항</h3>
-          <ol class="wrong-list">${wrongs
-            .map((it) => {
-              const label = it.status === "wrong" ? "틀림" : it.status === "skip" ? "스킵" : "미표기";
-              return `<li class="bad"><button type="button" class="grade-sub-btn" data-section="${it.id}">${it.name} ${it.q}번</button> ${label} · 내 답 ${it.mine || "-"} / 정답 ${it.ans || "-"} · ${(it.ms / 1000).toFixed(1)}초</li>`;
-            })
-            .join("")}</ol></div>`
-      : `<p class="grade-hint">틀린 문항이 없습니다.</p>`;
+    const grids = rows.map(questionGridHtml).join("");
     els.gradeSummary.hidden = false;
     els.gradeSummary.innerHTML = `
       <p class="result-weak">${weakest ? `가장 약한 영역: ${weakest.name}` : "채점 결과"}</p>
@@ -1485,8 +1479,8 @@
         <div><em>푼 문제</em><strong>${totalMarked}</strong><span>/ 100</span></div>
       </div>
       ${table}
-      <p class="grade-hint">영역 이름이나 문항 번호를 누르면 그 과목의 맞음/틀림을 다시 봅니다.</p>
-      ${wrongHtml}`;
+      <p class="q-legend"><span class="ok">맞음</span> <span class="bad">틀림</span> <span class="skip">스킵</span> <span class="mute">미표기</span> · 칸은 내 답 / 정답 · 소요시간</p>
+      ${grids}`;
     if (els.excelBox) els.excelBox.hidden = false;
     els.gradeDetail.hidden = true;
     renderOMR();
