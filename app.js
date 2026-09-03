@@ -13,9 +13,17 @@
   const emptyAnswers = () =>
     Object.fromEntries(SECTIONS.map((s) => [s.id, {}]));
 
+  const emptyCountMap = () =>
+    Object.fromEntries(SECTIONS.map((s) => [s.id, {}]));
+
   const defaultState = () => ({
     answers: emptyAnswers(),
+    timings: emptyCountMap(),
+    skips: emptyCountMap(),
     section: "lang",
+    qIndex: 1,
+    qStartedAt: null,
+    reviewMode: false,
     omrOpen: true,
     note: "",
     paint: "",
@@ -55,6 +63,11 @@
     omrAllFilled: $("#omr-all-filled"),
     omrSections: $("#omr-sections"),
     omrToggle: $("#omr-toggle"),
+    answerProgress: $("#answer-progress"),
+    timerReady: $("#timer-ready"),
+    timerPause: $("#timer-pause"),
+    skipSectionBtn: $("#skip-section"),
+    excelBox: $("#excel-box"),
     notepad: $("#notepad"),
     paint: $("#paint"),
     paintWrap: $("#paint-wrap"),
@@ -93,6 +106,7 @@
 
   let currentUser = null;
   let cloudRecords = [];
+  let lastGrade = null;
 
   function load() {
     try {
@@ -101,6 +115,15 @@
       raw.answers = normalizeAnswers(raw.answers);
       if (!SECTIONS.some((s) => s.id === raw.section)) raw.section = "lang";
       raw.answerKeys = { ...defaultState().answerKeys, ...(raw.answerKeys || {}) };
+      raw.timings = { ...emptyCountMap(), ...(raw.timings || {}) };
+      raw.skips = { ...emptyCountMap(), ...(raw.skips || {}) };
+      SECTIONS.forEach((s) => {
+        raw.timings[s.id] = { ...(raw.timings[s.id] || {}) };
+        raw.skips[s.id] = { ...(raw.skips[s.id] || {}) };
+      });
+      raw.qIndex = Math.min(Math.max(Number(raw.qIndex) || 1, 1), SECTION_SIZE + 1);
+      raw.qStartedAt = null;
+      raw.reviewMode = Boolean(raw.reviewMode);
       raw.examMode = true;
       raw.timerMinutes = 15;
       raw.examIndex = Number.isInteger(raw.examIndex)
@@ -183,6 +206,31 @@
     return `${String(m).padStart(2, "0")}분 ${String(s).padStart(2, "0")}초`;
   }
 
+  function formatClock(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+
+  function addTimeToCurrent() {
+    if (!state.qStartedAt || state.reviewMode) return;
+    const q = Number(state.qIndex);
+    if (q < 1 || q > SECTION_SIZE) {
+      state.qStartedAt = null;
+      return;
+    }
+    const sec = state.section;
+    if (!state.timings[sec]) state.timings[sec] = {};
+    state.timings[sec][q] = Number(state.timings[sec][q] || 0) + Math.max(0, Date.now() - state.qStartedAt);
+    state.qStartedAt = null;
+  }
+
+  function startQuestionClock() {
+    if (state.reviewMode || !state.running) return;
+    if (state.qIndex >= 1 && state.qIndex <= SECTION_SIZE) state.qStartedAt = Date.now();
+  }
+
   function examElapsedMs() {
     const usedInSection = 15 * 60 * 1000 - state.remainingMs;
     return state.examIndex * 15 * 60 * 1000 + Math.max(0, usedInSection);
@@ -191,16 +239,28 @@
   function renderTimer() {
     const idx = Math.min(state.examIndex, SECTIONS.length - 1);
     const name = SECTIONS[idx].name;
-    els.timerNow.textContent = formatTime(state.remainingMs);
+    els.timerNow.textContent = formatClock(state.remainingMs);
     els.timerTotal.textContent = "/ 15분";
     if (els.examSubject) els.examSubject.textContent = name;
     if (els.examStep) els.examStep.textContent = `${idx + 1} / 5`;
     if (els.examOverall) {
       els.examOverall.textContent = `전체 ${formatTime(examElapsedMs())} / 75분`;
     }
-    els.timerToggle.textContent = state.running ? "정지" : "시작";
+    if (els.timerToggle) {
+      els.timerToggle.hidden = startedExam();
+      els.timerToggle.textContent = "연습 시작";
+    }
+    if (els.timerPause) {
+      els.timerPause.hidden = !startedExam();
+      els.timerPause.textContent = state.running ? "일시정지" : "계속";
+    }
+    if (els.timerReady) els.timerReady.hidden = state.running || startedExam();
     els.timerFace.classList.toggle("is-warn", state.remainingMs <= 60_000 && state.remainingMs > 0);
     els.timerFace.classList.toggle("is-over", state.remainingMs <= 0);
+  }
+
+  function startedExam() {
+    return state.running || state.examIndex > 0 || Number(state.qIndex) > 1 || examElapsedMs() > 0;
   }
 
   function armExam(fromStart = true) {
@@ -217,6 +277,15 @@
     state.remainingMs = 15 * 60 * 1000;
     state.running = false;
     state.lastTick = null;
+    if (fromStart) {
+      state.answers = emptyAnswers();
+      state.timings = emptyCountMap();
+      state.skips = emptyCountMap();
+      state.qIndex = 1;
+      state.reviewMode = false;
+      lastGrade = null;
+    }
+    state.qStartedAt = null;
     stopClock();
     renderOMR();
     renderTimer();
@@ -237,6 +306,8 @@
     const next = state.examIndex + 1;
     if (next >= SECTIONS.length) {
       beep("finish");
+      addTimeToCurrent();
+      skipRestOfSection();
       state.running = false;
       state.remainingMs = 0;
       state.lastTick = null;
@@ -244,6 +315,7 @@
       renderTimer();
       persist();
       document.title = "종료 · SKCT 연습창";
+      renderOMR();
       if (els.gradeIntro) {
         els.gradeIntro.textContent =
           "5과목이 모두 끝났습니다. 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
@@ -252,10 +324,14 @@
       return;
     }
     beep("section");
+    addTimeToCurrent();
+    skipRestOfSection();
     state.examIndex = next;
     state.section = SECTIONS[next].id;
+    state.qIndex = 1;
     state.remainingMs = 15 * 60 * 1000;
     state.lastTick = Date.now();
+    startQuestionClock();
     renderOMR();
     renderTimer();
     persist();
@@ -341,14 +417,27 @@
     }
   }
 
+  function skipRestOfSection() {
+    const sec = state.section;
+    if (!state.skips[sec]) state.skips[sec] = {};
+    const start = Math.min(Math.max(Number(state.qIndex) || 1, 1), SECTION_SIZE + 1);
+    for (let q = start; q <= SECTION_SIZE; q += 1) {
+      if (!(state.answers[sec] && state.answers[sec][q])) state.skips[sec][q] = true;
+    }
+    state.qIndex = SECTION_SIZE + 1;
+    state.qStartedAt = null;
+  }
+
   function renderSectionButtons() {
     const frag = document.createDocumentFragment();
-    SECTIONS.forEach((sec) => {
+    SECTIONS.forEach((sec, idx) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "omr-sec";
       btn.dataset.section = sec.id;
       if (sec.id === state.section) btn.classList.add("is-active");
+      if (!state.reviewMode && idx < state.examIndex) btn.classList.add("is-done");
+      if (!state.reviewMode && idx > state.examIndex) btn.classList.add("is-locked");
       const filled = Object.values(state.answers[sec.id] || {}).filter(Boolean).length;
       btn.innerHTML = `<span>${sec.name}</span><em>${filled}/20</em>`;
       frag.appendChild(btn);
@@ -357,19 +446,29 @@
   }
 
   function renderOMR() {
-    els.workspace.classList.toggle("omr-hidden", !state.omrOpen);
-    els.omrToggle.textContent = state.omrOpen ? "OMR숨김" : "OMR";
+    if (els.omrToggle) {
+      els.workspace.classList.toggle("omr-hidden", !state.omrOpen);
+      els.omrToggle.textContent = state.omrOpen ? "OMR숨김" : "OMR";
+    }
     renderSectionButtons();
-
     const answers = sectionAnswers();
+    const qNow = Number(state.qIndex) || 1;
     const frag = document.createDocumentFragment();
     for (let i = 1; i <= SECTION_SIZE; i += 1) {
       const row = document.createElement("div");
       row.className = "omr-row";
       row.dataset.q = String(i);
+      const isActive = !state.reviewMode && i === qNow && qNow <= SECTION_SIZE;
+      const isPast = state.reviewMode || i < qNow;
+      const isFuture = !state.reviewMode && i > qNow;
+      if (isActive) row.classList.add("is-active");
+      if (!state.reviewMode && i < qNow) row.classList.add("is-done");
+      if (isFuture) row.classList.add("is-locked");
       const num = document.createElement("div");
       num.className = "omr-num";
       num.textContent = String(i);
+      const main = document.createElement("div");
+      main.className = "omr-row-main";
       const choices = document.createElement("div");
       choices.className = "omr-choices";
       for (let c = 1; c <= 5; c += 1) {
@@ -379,12 +478,39 @@
         btn.textContent = String(c);
         btn.dataset.choice = String(c);
         if (Number(answers[i]) === c) btn.classList.add("is-on");
+        if (!isActive && !state.reviewMode) btn.disabled = true;
         choices.appendChild(btn);
       }
-      row.append(num, choices);
+      main.appendChild(choices);
+      if (isActive) {
+        const nextBtn = document.createElement("button");
+        nextBtn.type = "button";
+        nextBtn.className = "omr-next";
+        nextBtn.dataset.act = "next";
+        nextBtn.textContent = "다음";
+        const skipBtn = document.createElement("button");
+        skipBtn.type = "button";
+        skipBtn.className = "omr-skip";
+        skipBtn.dataset.act = "skip";
+        skipBtn.textContent = "스킵";
+        main.append(nextBtn, skipBtn);
+      } else if (state.skips[state.section] && state.skips[state.section][i]) {
+        const mark = document.createElement("span");
+        mark.className = "omr-all";
+        mark.textContent = "스킵";
+        main.appendChild(mark);
+      }
+      row.append(num, main);
       frag.appendChild(row);
     }
     els.omrList.replaceChildren(frag);
+    if (els.answerProgress) {
+      const cap = Math.min(qNow, SECTION_SIZE);
+      els.answerProgress.textContent = `${currentSection().name} ${Math.min(qNow, SECTION_SIZE)}/${SECTION_SIZE}`;
+      if (qNow > SECTION_SIZE) els.answerProgress.textContent = `${currentSection().name} 완료`;
+    }
+    const active = els.omrList.querySelector(".omr-row.is-active");
+    if (active) active.scrollIntoView({ block: "nearest" });
     updateFilled();
   }
 
@@ -702,14 +828,17 @@
     let wrongMarked = 0;
     let blank = 0;
     let marked = 0;
+    let skipCount = 0;
     for (let q = 1; q <= SECTION_SIZE; q += 1) {
       const mine = Number(answers[q] || 0);
+      const skipped = Boolean(state.skips[id] && state.skips[id][q]);
+      if (skipped) skipCount += 1;
       if (mine) marked += 1;
       const ans = key[q - 1];
       let status = "nokey";
       if (ans >= 1 && ans <= 5) {
         if (!mine) {
-          status = "blank";
+          status = skipped ? "skip" : "blank";
           blank += 1;
         } else if (mine === ans) {
           status = "correct";
@@ -719,9 +848,10 @@
           wrongMarked += 1;
         }
       }
-      items.push({ q, mine, ans: ans >= 1 && ans <= 5 ? ans : 0, status });
+      const ms = Number((state.timings[id] && state.timings[id][q]) || 0);
+      items.push({ q, mine, ans: ans >= 1 && ans <= 5 ? ans : 0, status, skipped, ms });
     }
-    return { correct, wrongMarked, blank, marked, keyed: key.length, items };
+    return { correct, wrongMarked, blank, marked, keyed: key.length, skipCount, items };
   }
 
   function collectKeysFromForm() {
@@ -753,7 +883,7 @@
       const item = result.items.find((it) => it.q === Number(row.dataset.q));
       if (!item) return;
       if (item.status === "correct") row.classList.add("is-correct");
-      if (item.status === "wrong" || item.status === "blank") row.classList.add("is-wrong");
+      if (item.status === "wrong" || item.status === "blank" || item.status === "skip") row.classList.add("is-wrong");
     });
   }
 
@@ -771,11 +901,13 @@
             ? "맞음"
             : it.status === "wrong"
               ? "틀림"
-              : it.status === "blank"
-                ? "미표기"
-                : "정답없음";
+              : it.status === "skip"
+                ? "스킵"
+                : it.status === "blank"
+                  ? "미표기"
+                  : "정답없음";
         const cls =
-          it.status === "correct" ? "ok" : it.status === "wrong" || it.status === "blank" ? "bad" : "mute";
+          it.status === "correct" ? "ok" : it.status === "wrong" || it.status === "blank" || it.status === "skip" ? "bad" : "mute";
         const mine = it.mine || "-";
         const ans = it.ans || "-";
         return `<li class="${cls}"><strong>${it.q}</strong> ${label} · 내 답 ${mine} / 정답 ${ans}</li>`;
@@ -975,6 +1107,7 @@
         name: r.name,
         correct: r.correct,
         marked: r.marked,
+        skipCount: r.skipCount,
       })),
     };
   }
@@ -1001,6 +1134,8 @@
       answers: JSON.parse(JSON.stringify(state.answers || emptyAnswers())),
       answerKeys: { ...defaultState().answerKeys, ...(state.answerKeys || {}) },
       note: state.note || "",
+      timings: JSON.parse(JSON.stringify(state.timings || emptyCountMap())),
+      skips: JSON.parse(JSON.stringify(state.skips || emptyCountMap())),
       score: currentScoreSnapshot(),
     };
     try {
@@ -1067,6 +1202,9 @@
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
     state.note = rec.note || "";
+    state.timings = { ...emptyCountMap(), ...(rec.timings || {}) };
+    state.skips = { ...emptyCountMap(), ...(rec.skips || {}) };
+    state.reviewMode = true;
     if (els.notepad) els.notepad.value = state.note;
     persist();
     renderOMR();
@@ -1091,6 +1229,181 @@
       }
     }
     renderRecords();
+  }
+
+  function avgSecFor(id) {
+    const vals = Object.values(state.timings[id] || {})
+      .map(Number)
+      .filter((n) => n > 0);
+    if (!vals.length) return 0;
+    return vals.reduce((a, b) => a + b, 0) / vals.length / 1000;
+  }
+
+  function roundTitle() {
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} 연습`;
+  }
+
+  function csvCell(v) {
+    return `"${String(v ?? "").replace(/"/g, '""')}"`;
+  }
+
+  function buildRoundCsv(name) {
+    const reports = lastGrade || SECTIONS.map((sec) => ({
+      ...sec,
+      ...evaluateSection(sec.id, (state.answerKeys && state.answerKeys[sec.id]) || ""),
+    }));
+    const lines = [
+      ["회차", "영역", "정답률(%)", "평균소요(초)", "스킵", "맞음", "틀림", "미표기"].map(csvCell).join(","),
+    ];
+    reports.forEach((r) => {
+      const keyed = Math.min(r.keyed, SECTION_SIZE) || SECTION_SIZE;
+      const rate = keyed ? ((r.correct / keyed) * 100).toFixed(1) : "0.0";
+      lines.push(
+        [name, r.name, rate, avgSecFor(r.id).toFixed(1), r.skipCount || 0, r.correct, r.wrongMarked, r.blank]
+          .map(csvCell)
+          .join(",")
+      );
+    });
+    lines.push("");
+    lines.push(["회차", "영역", "문항", "내답", "정답", "결과", "소요초", "스킵"].map(csvCell).join(","));
+    reports.forEach((r) => {
+      (r.items || []).forEach((it) => {
+        const label =
+          it.status === "correct"
+            ? "맞음"
+            : it.status === "wrong"
+              ? "틀림"
+              : it.status === "skip"
+                ? "스킵"
+                : it.status === "blank"
+                  ? "미표기"
+                  : "";
+        lines.push(
+          [
+            name,
+            r.name,
+            it.q,
+            it.mine || "",
+            it.ans || "",
+            label,
+            (Number(it.ms || 0) / 1000).toFixed(1),
+            it.skipped ? "Y" : "",
+          ]
+            .map(csvCell)
+            .join(",")
+        );
+      });
+    });
+    return lines.join("\r\n");
+  }
+
+  function downloadCsv(filename, text) {
+    const blob = new Blob(["\uFEFF" + text], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function saveNewExcel() {
+    const name = (els.recordName && els.recordName.value.trim()) || roundTitle();
+    downloadCsv(`${name.replace(/[\\/:*?"<>|]/g, "_")}.csv`, buildRoundCsv(name));
+    showRecordMsg("엑셀(CSV) 파일을 저장했습니다.", true);
+  }
+
+  async function appendExcel() {
+    const name = (els.recordName && els.recordName.value.trim()) || roundTitle();
+    const chunk = buildRoundCsv(name);
+    if (!window.showOpenFilePicker) {
+      downloadCsv(`${name.replace(/[\\/:*?"<>|]/g, "_")}.csv`, chunk);
+      showRecordMsg("이 브라우저는 기존 파일 추가를 지원하지 않아 새 파일로 받았습니다.", true);
+      return;
+    }
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: "CSV", accept: { "text/csv": [".csv"], "text/plain": [".txt"] } }],
+      });
+      const file = await handle.getFile();
+      const old = (await file.text()).replace(/^\uFEFF/, "").trimEnd();
+      const next = `${old}\r\n\r\n${chunk}`;
+      const writable = await handle.createWritable();
+      await writable.write("\uFEFF" + next);
+      await writable.close();
+      showRecordMsg("기존 엑셀(CSV)에 이 회차를 추가했습니다.", true);
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      console.warn(err);
+      showRecordMsg("기존 파일에 추가하지 못했습니다. 새 엑셀로 저장해 보세요.", false);
+    }
+  }
+
+  function ensureExamRunning() {
+    if (state.reviewMode) return;
+    if (!state.running) {
+      state.running = true;
+      state.lastTick = Date.now();
+      ensureAudio();
+      startClock();
+      startQuestionClock();
+      renderTimer();
+    }
+  }
+
+  function goToQuestion(skip) {
+    if (state.reviewMode) return;
+    ensureExamRunning();
+    const q = Number(state.qIndex);
+    if (q < 1 || q > SECTION_SIZE) return;
+    addTimeToCurrent();
+    const sec = state.section;
+    if (!state.skips[sec]) state.skips[sec] = {};
+    const answers = sectionAnswers();
+    if (skip || !answers[q]) {
+      delete answers[q];
+      state.skips[sec][q] = true;
+    } else {
+      delete state.skips[sec][q];
+    }
+    state.qIndex = q + 1;
+    startQuestionClock();
+    renderOMR();
+    persist();
+  }
+
+  function skipWholeSection() {
+    if (state.reviewMode) return;
+    if (!confirm("이 과목의 남은 문항을 스킵하고 다음 영역으로 갈까요?")) return;
+    addTimeToCurrent();
+    skipRestOfSection();
+    const next = state.examIndex + 1;
+    if (next >= SECTIONS.length) {
+      state.running = false;
+      stopClock();
+      renderOMR();
+      renderTimer();
+      persist();
+      openGradeModal(true);
+      return;
+    }
+    state.examIndex = next;
+    state.section = SECTIONS[next].id;
+    state.qIndex = 1;
+    state.remainingMs = 15 * 60 * 1000;
+    state.lastTick = Date.now();
+    startQuestionClock();
+    renderOMR();
+    renderTimer();
+    persist();
+    showToast(`${SECTIONS[next].name}으로 건너뜁니다.`);
+  }
+
+  function retryPractice() {
+    if (!confirm("지금 답안과 시간을 지우고 처음부터 다시 할까요?")) return;
+    closeModal(els.gradeModal);
+    armExam(true);
   }
 
   function gradeAll() {
@@ -1119,28 +1432,64 @@
       ...sec,
       ...evaluateSection(sec.id, state.answerKeys[sec.id] || ""),
     }));
+    lastGrade = reports;
+    state.reviewMode = true;
+    addTimeToCurrent();
     const totalCorrect = reports.reduce((n, r) => n + r.correct, 0);
     const totalMarked = reports.reduce((n, r) => n + r.marked, 0);
     const totalKeyed = reports.reduce((n, r) => n + Math.min(r.keyed, SECTION_SIZE), 0);
-    const subjectBtns = reports
-      .map(
-        (r) => `
-        <button type="button" class="grade-sub-btn" data-section="${r.id}">
-          <strong>${r.name}</strong>
-          <span>맞음 ${r.correct} / 20</span>
-          <span>푼 문제 ${r.marked}</span>
-        </button>`
-      )
-      .join("");
+    const rows = reports.map((r) => {
+      const keyed = Math.min(r.keyed, SECTION_SIZE) || 0;
+      const rate = keyed ? ((r.correct / keyed) * 100).toFixed(1) : "0.0";
+      return { ...r, rate: Number(rate), avg: avgSecFor(r.id), skipN: r.skipCount || 0 };
+    });
+    const weakest = rows
+      .filter((r) => (state.answerKeys[r.id] || "").length)
+      .sort((a, b) => a.rate - b.rate || b.skipN - a.skipN)[0];
+    const table = `
+      <table class="result-table">
+        <thead><tr><th>영역</th><th>정답률</th><th>평균소요</th><th>스킵</th><th>맞음</th></tr></thead>
+        <tbody>
+          ${rows
+            .map(
+              (r) => `<tr class="${weakest && weakest.id === r.id ? "is-weak" : ""}" data-section="${r.id}">
+                <td><button type="button" class="grade-sub-btn" data-section="${r.id}">${r.name}</button></td>
+                <td>${r.rate.toFixed(1)}%</td>
+                <td>${r.avg.toFixed(1)}s</td>
+                <td>${r.skipN}</td>
+                <td>${r.correct} / 20</td>
+              </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>`;
+    const wrongs = rows.flatMap((r) =>
+      (r.items || [])
+        .filter((it) => it.status === "wrong" || it.status === "blank" || it.status === "skip")
+        .map((it) => ({ ...it, name: r.name, id: r.id }))
+    );
+    const wrongHtml = wrongs.length
+      ? `<div class="wrong-block"><h3>틀린·스킵·미표기 문항</h3>
+          <ol class="wrong-list">${wrongs
+            .map((it) => {
+              const label = it.status === "wrong" ? "틀림" : it.status === "skip" ? "스킵" : "미표기";
+              return `<li class="bad"><button type="button" class="grade-sub-btn" data-section="${it.id}">${it.name} ${it.q}번</button> ${label} · 내 답 ${it.mine || "-"} / 정답 ${it.ans || "-"} · ${(it.ms / 1000).toFixed(1)}초</li>`;
+            })
+            .join("")}</ol></div>`
+      : `<p class="grade-hint">틀린 문항이 없습니다.</p>`;
     els.gradeSummary.hidden = false;
     els.gradeSummary.innerHTML = `
+      <p class="result-weak">${weakest ? `가장 약한 영역: ${weakest.name}` : "채점 결과"}</p>
       <div class="grade-totals">
         <div><em>총점</em><strong>${totalCorrect}</strong><span>/ ${totalKeyed || 100}</span></div>
         <div><em>푼 문제</em><strong>${totalMarked}</strong><span>/ 100</span></div>
       </div>
-      <p class="grade-hint">과목을 누르면 맞는 문제와 틀린 문제를 한눈에 볼 수 있습니다.</p>
-      <div class="grade-sub-grid">${subjectBtns}</div>`;
+      ${table}
+      <p class="grade-hint">영역 이름이나 문항 번호를 누르면 그 과목의 맞음/틀림을 다시 봅니다.</p>
+      ${wrongHtml}`;
+    if (els.excelBox) els.excelBox.hidden = false;
     els.gradeDetail.hidden = true;
+    renderOMR();
   }
 
   function openGradeModal(ended = false) {
@@ -1151,7 +1500,9 @@
     renderGradeKeys();
     if (els.gradeSummary) els.gradeSummary.hidden = true;
     if (els.gradeDetail) els.gradeDetail.hidden = true;
+    if (els.excelBox) els.excelBox.hidden = true;
     showRecordMsg("", true);
+    if (els.recordName && !els.recordName.value.trim()) els.recordName.value = roundTitle();
     openModal(els.gradeModal);
   }
 
@@ -1165,25 +1516,54 @@
 
   function bind() {
     els.timerToggle.addEventListener("click", () => {
+      if (state.reviewMode) {
+        if (!confirm("채점 화면을 닫고 이어서 연습할까요? 이미 넘어간 문항은 그대로입니다.")) return;
+        state.reviewMode = false;
+      }
       if (state.remainingMs <= 0 && state.examIndex >= SECTIONS.length - 1) armExam(true);
-      state.running = !state.running;
-      state.lastTick = state.running ? Date.now() : null;
-      if (state.running) {
-        ensureAudio();
-        beep("start");
-        startClock();
-      } else stopClock();
+      state.running = true;
+      state.lastTick = Date.now();
+      ensureAudio();
+      beep("start");
+      startClock();
+      startQuestionClock();
       renderTimer();
+      renderOMR();
       persist();
     });
 
-    $("#timer-reset").addEventListener("click", () => armExam(true));
+    if (els.timerPause) {
+      els.timerPause.addEventListener("click", () => {
+        if (!startedExam() && !state.running) return;
+        if (state.running) {
+          addTimeToCurrent();
+          state.running = false;
+          state.lastTick = null;
+          stopClock();
+        } else {
+          state.running = true;
+          state.lastTick = Date.now();
+          startClock();
+          startQuestionClock();
+        }
+        renderTimer();
+        persist();
+      });
+    }
+
+    if (els.skipSectionBtn) els.skipSectionBtn.addEventListener("click", skipWholeSection);
     $("#preview-end").addEventListener("click", () => {
+      addTimeToCurrent();
+      state.running = false;
+      state.lastTick = null;
+      stopClock();
+      renderTimer();
+      persist();
       ensureAudio();
       beep("finish");
       if (els.gradeIntro) {
         els.gradeIntro.textContent =
-          "5과목이 모두 끝났습니다. 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
+          "채점하려면 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
       }
       openGradeModal(true);
     });
@@ -1195,47 +1575,53 @@
       openGradeModal();
     });
 
-    els.omrToggle.addEventListener("click", () => {
-      state.omrOpen = !state.omrOpen;
-      renderOMR();
-      persist();
-    });
+    if (els.omrToggle) {
+      els.omrToggle.addEventListener("click", () => {
+        state.omrOpen = !state.omrOpen;
+        renderOMR();
+        persist();
+      });
+    }
 
     els.omrSections.addEventListener("click", (e) => {
       const btn = e.target.closest(".omr-sec");
       if (!btn) return;
+      const idx = SECTIONS.findIndex((s) => s.id === btn.dataset.section);
+      if (!state.reviewMode && idx !== state.examIndex) return;
       state.section = btn.dataset.section;
+      if (state.reviewMode) state.examIndex = idx;
       renderOMR();
       persist();
     });
 
     els.omrList.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-act]");
+      if (act) {
+        goToQuestion(act.dataset.act === "skip");
+        return;
+      }
       const btn = e.target.closest(".omr-choice");
-      if (!btn) return;
-      const q = btn.closest(".omr-row").dataset.q;
+      if (!btn || btn.disabled) return;
+      const row = btn.closest(".omr-row");
+      if (!row || (!state.reviewMode && !row.classList.contains("is-active"))) return;
+      const q = row.dataset.q;
       const answers = sectionAnswers();
       const choice = Number(btn.dataset.choice);
       if (Number(answers[q]) === choice) delete answers[q];
       else answers[q] = choice;
-      btn.closest(".omr-choices").querySelectorAll(".omr-choice").forEach((c) => {
+      row.querySelectorAll(".omr-choice").forEach((c) => {
         c.classList.toggle("is-on", Number(c.dataset.choice) === Number(answers[q]));
       });
       updateFilled();
       scheduleSave();
     });
-
-    $("#omr-reset").addEventListener("click", () => {
-      if (!confirm(`${currentSection().name} 답을 모두 지울까요? 다른 과목 답은 그대로 둡니다.`)) return;
-      state.answers[state.section] = {};
-      renderOMR();
-      persist();
-    });
-
-    $("#grade-btn").addEventListener("click", () => openGradeModal());
     $("#grade-close").addEventListener("click", () => closeModal(els.gradeModal));
     $("#grade-cancel").addEventListener("click", () => closeModal(els.gradeModal));
     $("#grade-run").addEventListener("click", gradeAll);
     $("#record-save").addEventListener("click", saveCurrentRecord);
+    if ($("#excel-new")) $("#excel-new").addEventListener("click", () => saveNewExcel().catch((err) => console.warn(err)));
+    if ($("#excel-append")) $("#excel-append").addEventListener("click", () => appendExcel().catch((err) => console.warn(err)));
+    if ($("#retry-practice")) $("#retry-practice").addEventListener("click", retryPractice);
     els.recordName.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();

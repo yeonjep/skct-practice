@@ -255,12 +255,8 @@ input {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(156px, var(--omr-w)) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 1.15fr) minmax(280px, 0.9fr);
   overflow: hidden;
-}
-
-.workspace.omr-hidden {
-  grid-template-columns: 1fr;
 }
 
 .omr-panel {
@@ -275,6 +271,12 @@ input {
 
 .workspace.omr-hidden .omr-panel {
   display: none;
+}
+
+.answer-progress {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
 }
 
 .panel-head {
@@ -388,11 +390,54 @@ input {
 
 .omr-row {
   display: grid;
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 28px 1fr;
   align-items: center;
-  gap: 4px;
-  padding: 2px 2px;
+  gap: 6px;
+  padding: 6px 8px;
   border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.omr-row.is-active {
+  border-color: var(--accent);
+  background: #fff1f2;
+}
+
+.omr-row.is-done {
+  opacity: 0.55;
+}
+
+.omr-row.is-locked {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.omr-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.omr-next,
+.omr-skip {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.omr-next {
+  background: var(--accent);
+  color: #fff;
+}
+
+.omr-skip {
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--line);
 }
 
 .omr-row.is-correct {
@@ -1048,4 +1093,131 @@ input {
   background: #f8fafc;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.timer-card {
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.timer-card-body {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timer-card .timer-now {
+  font-size: 42px;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.timer-card .timer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timer-ready {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.btn-wide {
+  width: 100%;
+}
+
+.omr-sec.is-locked {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.omr-choice {
+  width: 28px;
+  height: 28px;
+  max-width: 36px;
+}
+
+.result-weak {
+  margin: 0 0 10px;
+  font-weight: 800;
+}
+
+.result-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.result-table th,
+.result-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 6px;
+  text-align: left;
+}
+
+.result-table th {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.result-table tr.is-weak {
+  background: #fff1f2;
+}
+
+.excel-box {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.excel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.excel-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.wrong-block {
+  margin-top: 8px;
+}
+
+.wrong-block h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.wrong-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.result-table .grade-sub-btn {
+  display: inline;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 700;
+  color: var(--ink);
 }
