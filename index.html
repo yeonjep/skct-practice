@@ -15,7 +15,7 @@
     <meta name="twitter:description" content="&#x200b;" />
     <link rel="canonical" href="https://yeonjep.github.io/skct-practice/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=11" />
+    <link rel="stylesheet" href="styles.css?v=12" />
   </head>
   <body>
     <div class="app">
@@ -90,21 +90,21 @@
                 <button type="button" class="mode-btn is-active" data-mode="note" role="tab">메모장</button>
                 <button type="button" class="mode-btn" data-mode="paint" role="tab">그림판</button>
               </div>
-              <div class="note-tools">
-                <div class="paint-tools" id="paint-tools" hidden>
-                  <button type="button" class="swatch is-active" data-color="#111827" title="검정"></button>
-                  <button type="button" class="swatch" data-color="#dc2626" title="빨강"></button>
-                  <button type="button" class="swatch" data-color="#2563eb" title="파랑"></button>
-                  <button type="button" class="swatch" data-color="#16a34a" title="초록"></button>
-                  <button type="button" class="tool-btn" id="eraser-btn" title="지우개">지우개</button>
-                  <label class="stroke-label">
-                    굵기
-                    <input type="range" id="stroke-width" min="1" max="16" value="3" />
-                  </label>
-                  <button type="button" class="btn btn-sm" id="undo-btn">되돌리기</button>
-                </div>
-                <button type="button" class="btn btn-sm danger" id="clear-surface">전체 지우기</button>
+              <button type="button" class="btn btn-sm danger" id="clear-surface">지우기</button>
+            </div>
+            <div class="paint-tools" id="paint-tools" hidden>
+              <div class="swatch-row">
+                <button type="button" class="swatch is-active" data-color="#111827" title="검정"></button>
+                <button type="button" class="swatch" data-color="#dc2626" title="빨강"></button>
+                <button type="button" class="swatch" data-color="#2563eb" title="파랑"></button>
+                <button type="button" class="swatch" data-color="#16a34a" title="초록"></button>
               </div>
+              <label class="stroke-label" title="굵기">
+                굵기
+                <input type="range" id="stroke-width" min="1" max="16" value="3" />
+              </label>
+              <button type="button" class="tool-btn" id="eraser-btn">지우개</button>
+              <button type="button" class="tool-btn" id="undo-btn">되돌리기</button>
             </div>
             <div class="surface">
               <textarea id="notepad" class="notepad" spellcheck="false"></textarea>
