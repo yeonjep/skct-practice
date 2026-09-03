@@ -83,7 +83,16 @@
     recordSaveMsg: $("#record-save-msg"),
     recordsModal: $("#records-modal"),
     recordsList: $("#records-list"),
+    recordsLead: $("#records-lead"),
+    loginBtn: $("#login-btn"),
+    logoutBtn: $("#logout-btn"),
+    userChip: $("#user-chip"),
+    userPhoto: $("#user-photo"),
+    userName: $("#user-name"),
   };
+
+  let currentUser = null;
+  let cloudRecords = [];
 
   function load() {
     try {
@@ -782,7 +791,99 @@
     els.gradeDetail.scrollIntoView({ block: "nearest" });
   }
 
-  function loadRecords() {
+  function firebaseReady() {
+    const cfg = window.FIREBASE_CONFIG || {};
+    return Boolean(window.firebase && cfg.apiKey && cfg.projectId);
+  }
+
+  function initFirebase() {
+    if (!firebaseReady() || firebase.apps.length) {
+      renderAuth();
+      return;
+    }
+    firebase.initializeApp(window.FIREBASE_CONFIG);
+    firebase.auth().onAuthStateChanged(async (user) => {
+      currentUser = user;
+      renderAuth();
+      if (user) {
+        try {
+          cloudRecords = await fetchCloudRecords();
+          await maybeMigrateLocalRecords();
+        } catch (err) {
+          console.warn(err);
+        }
+      } else {
+        cloudRecords = [];
+      }
+    });
+  }
+
+  function renderAuth() {
+    const ready = firebaseReady();
+    if (els.loginBtn) els.loginBtn.hidden = !ready || Boolean(currentUser);
+    if (els.userChip) els.userChip.hidden = !currentUser;
+    if (currentUser) {
+      if (els.userName) els.userName.textContent = currentUser.displayName || currentUser.email || "로그인됨";
+      if (els.userPhoto) {
+        els.userPhoto.hidden = !currentUser.photoURL;
+        els.userPhoto.src = currentUser.photoURL || "";
+      }
+    }
+    if (els.recordsLead) {
+      if (!ready) {
+        els.recordsLead.textContent =
+          "지금은 이 브라우저에만 저장됩니다. Firebase를 연결하면 구글 로그인으로 기록이 계정에 남습니다.";
+      } else if (!currentUser) {
+        els.recordsLead.textContent =
+          "구글 로그인하면 기록이 계정에 남아 다른 컴퓨터에서도 볼 수 있습니다. 로그인 전에는 이 브라우저에만 남습니다.";
+      } else {
+        els.recordsLead.textContent = `${currentUser.displayName || "계정"}에 저장된 회차입니다. 이름을 눌러 불러오세요.`;
+      }
+    }
+  }
+
+  function recordsRef() {
+    return firebase.firestore().collection("users").doc(currentUser.uid).collection("records");
+  }
+
+  async function fetchCloudRecords() {
+    if (!currentUser) return [];
+    const snap = await recordsRef().orderBy("savedAt", "desc").get();
+    cloudRecords = snap.docs.map((doc) => doc.data());
+    return cloudRecords;
+  }
+
+  async function maybeMigrateLocalRecords() {
+    const local = loadLocalRecords();
+    if (!local.length || !currentUser) return;
+    const flag = `skct-migrated-${currentUser.uid}`;
+    if (localStorage.getItem(flag)) return;
+    if (!confirm("이 브라우저에 있는 회차 기록을 구글 계정에도 올릴까요?")) {
+      localStorage.setItem(flag, "1");
+      return;
+    }
+    for (const rec of local) {
+      await recordsRef().doc(rec.id).set(rec);
+    }
+    localStorage.setItem(flag, "1");
+    cloudRecords = await fetchCloudRecords();
+  }
+
+  async function signInGoogle() {
+    if (!firebaseReady()) {
+      alert("아직 구글 로그인이 연결되지 않았습니다. 관리자가 Firebase 설정을 넣어야 합니다.");
+      return;
+    }
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    await firebase.auth().signInWithPopup(provider);
+  }
+
+  async function signOutGoogle() {
+    if (firebaseReady()) await firebase.auth().signOut();
+  }
+
+  function loadLocalRecords() {
     try {
       const list = JSON.parse(localStorage.getItem(RECORDS_KEY) || "[]");
       return Array.isArray(list) ? list : [];
@@ -793,6 +894,10 @@
 
   function persistRecords(list) {
     localStorage.setItem(RECORDS_KEY, JSON.stringify(list));
+  }
+
+  function recordsForUi() {
+    return currentUser ? cloudRecords : loadLocalRecords();
   }
 
   function escapeHtml(s) {
@@ -838,11 +943,11 @@
     els.recordSaveMsg.className = `record-save-msg ${ok ? "is-ok" : "is-error"}`;
   }
 
-  function saveCurrentRecord() {
+  async function saveCurrentRecord() {
     collectKeysFromForm();
     const name = (els.recordName && els.recordName.value.trim()) || "";
     if (!name) {
-      showRecordMsg("회차 이름을 입력해 주세요.", false);
+      showRecordMsg("저장명을 입력하세요.", false);
       els.recordName && els.recordName.focus();
       return;
     }
@@ -856,19 +961,28 @@
       score: currentScoreSnapshot(),
     };
     try {
-      const list = loadRecords();
+      const list = loadLocalRecords();
       list.unshift(record);
       persistRecords(list);
-      showRecordMsg(`「${name}」을 저장했습니다.`, true);
+      if (currentUser) {
+        await recordsRef().doc(record.id).set(record);
+        cloudRecords = [record, ...cloudRecords.filter((r) => r.id !== record.id)];
+        showRecordMsg(`「${name}」을 계정에 저장했습니다. 다른 기기에서도 볼 수 있습니다.`, true);
+      } else if (firebaseReady()) {
+        showRecordMsg(`「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
+      } else {
+        showRecordMsg(`「${name}」을 이 브라우저에 저장했습니다.`, true);
+      }
       if (els.recordName) els.recordName.value = "";
-    } catch {
-      showRecordMsg("저장 공간이 부족합니다. 예전 기록을 지운 뒤 다시 시도해 주세요.", false);
+    } catch (err) {
+      console.warn(err);
+      showRecordMsg("저장에 실패했습니다. 잠시 후 다시 시도해 주세요.", false);
     }
   }
 
   function renderRecords() {
     if (!els.recordsList) return;
-    const list = loadRecords();
+    const list = recordsForUi();
     if (!list.length) {
       els.recordsList.innerHTML = '<p class="records-empty">아직 저장한 회차가 없습니다.</p>';
       return;
@@ -891,13 +1005,21 @@
       .join("");
   }
 
-  function openRecords() {
+  async function openRecords() {
+    renderAuth();
+    if (currentUser) {
+      try {
+        cloudRecords = await fetchCloudRecords();
+      } catch (err) {
+        console.warn(err);
+      }
+    }
     renderRecords();
     openModal(els.recordsModal);
   }
 
   function applyRecord(id) {
-    const rec = loadRecords().find((r) => r.id === id);
+    const rec = recordsForUi().find((r) => r.id === id);
     if (!rec) return;
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
@@ -913,10 +1035,18 @@
     showRecordMsg(`「${rec.name}」을(를) 불러왔습니다.`, true);
   }
 
-  function deleteRecord(id) {
-    const rec = loadRecords().find((r) => r.id === id);
+  async function deleteRecord(id) {
+    const rec = recordsForUi().find((r) => r.id === id);
     if (!rec || !confirm(`「${rec.name}」을(를) 지울까요?`)) return;
-    persistRecords(loadRecords().filter((r) => r.id !== id));
+    persistRecords(loadLocalRecords().filter((r) => r.id !== id));
+    if (currentUser) {
+      try {
+        await recordsRef().doc(id).delete();
+        cloudRecords = cloudRecords.filter((r) => r.id !== id);
+      } catch (err) {
+        console.warn(err);
+      }
+    }
     renderRecords();
   }
 
@@ -1070,6 +1200,15 @@
       }
     });
     $("#records-btn").addEventListener("click", openRecords);
+    $("#login-btn").addEventListener("click", () => {
+      signInGoogle().catch((err) => {
+        console.warn(err);
+        alert(err && err.message ? err.message : "로그인에 실패했습니다.");
+      });
+    });
+    $("#logout-btn").addEventListener("click", () => {
+      signOutGoogle().catch((err) => console.warn(err));
+    });
     $("#records-close").addEventListener("click", () => closeModal(els.recordsModal));
     $("#records-done").addEventListener("click", () => closeModal(els.recordsModal));
     els.recordsList.addEventListener("click", (e) => {
@@ -1237,6 +1376,7 @@
     renderCalc();
     applyPaintStyle();
     setMode("note");
+    initFirebase();
     if (!state.hideHelp) openModal(els.helpModal);
   }
 

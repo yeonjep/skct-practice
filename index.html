@@ -34,6 +34,14 @@
         </div>
 
         <div class="top-actions">
+          <div class="auth-box" id="auth-box">
+            <button type="button" class="icon-btn" id="login-btn">구글 로그인</button>
+            <div class="user-chip" id="user-chip" hidden>
+              <img id="user-photo" alt="" />
+              <span id="user-name"></span>
+              <button type="button" class="icon-btn" id="logout-btn">로그아웃</button>
+            </div>
+          </div>
           <button type="button" class="icon-btn" id="records-btn" title="저장한 회차">기록</button>
           <button type="button" class="icon-btn" id="omr-toggle" title="OMR 숨기기/보이기">OMR</button>
           <button type="button" class="icon-btn" id="help-btn" title="사용 설명">?</button>
@@ -155,7 +163,8 @@
             </li>
             <li>
               <strong>채점</strong>
-              시험이 끝나거나 채점 버튼을 누르면 5과목 정답 칸이 열립니다. 회차 이름을 붙여 저장할 수 있고, 위쪽 기록에서 다시 불러올 수 있습니다.
+              시험이 끝나거나 채점 버튼을 누르면 5과목 정답 칸이 열립니다. 회차 이름을 붙여 저장할 수 있습니다.
+              구글 로그인하면 기록이 계정에 남아 다른 기기에서도 볼 수 있습니다.
             </li>
             <li>
               <strong>계산기</strong>
@@ -227,7 +236,7 @@
           <button type="button" class="icon-btn" id="records-close">✕</button>
         </div>
         <div class="modal-body">
-          <p class="lead">이름을 눌러 그때 답안과 정답을 다시 불러옵니다.</p>
+          <p class="lead" id="records-lead">이름을 눌러 그때 답안과 정답을 다시 불러옵니다.</p>
           <div id="records-list" class="records-list"></div>
         </div>
         <div class="modal-foot">
@@ -236,6 +245,10 @@
       </div>
     </div>
 
+    <script src="firebase-config.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore-compat.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
