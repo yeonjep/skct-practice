@@ -16,10 +16,18 @@
   const emptyCountMap = () =>
     Object.fromEntries(SECTIONS.map((s) => [s.id, {}]));
 
+  const emptyMinutes = () =>
+    Object.fromEntries(SECTIONS.map((s) => [s.id, 15]));
+
+  const emptySpent = () =>
+    Object.fromEntries(SECTIONS.map((s) => [s.id, 0]));
+
   const defaultState = () => ({
     answers: emptyAnswers(),
     timings: emptyCountMap(),
     skips: emptyCountMap(),
+    sectionMinutes: emptyMinutes(),
+    spentMs: emptySpent(),
     section: "lang",
     qIndex: 1,
     qStartedAt: null,
@@ -36,6 +44,9 @@
     remainingMs: 15 * 60 * 1000,
     running: false,
     lastTick: null,
+    alarmOn: true,
+    alarmEveryMin: 15,
+    alarmTickMs: 0,
     sound: true,
     hideHelp: false,
     calcExpr: "",
@@ -65,6 +76,9 @@
     omrToggle: $("#omr-toggle"),
     answerProgress: $("#answer-progress"),
     timerReady: $("#timer-ready"),
+    alarmOn: $("#alarm-on"),
+    settingsBtn: $("#settings-btn"),
+    settingsModal: $("#settings-modal"),
     timerPause: $("#timer-pause"),
     skipSectionBtn: $("#skip-section"),
     excelBox: $("#excel-box"),
@@ -117,10 +131,17 @@
       raw.answerKeys = { ...defaultState().answerKeys, ...(raw.answerKeys || {}) };
       raw.timings = { ...emptyCountMap(), ...(raw.timings || {}) };
       raw.skips = { ...emptyCountMap(), ...(raw.skips || {}) };
+      raw.sectionMinutes = { ...emptyMinutes(), ...(raw.sectionMinutes || {}) };
+      raw.spentMs = { ...emptySpent(), ...(raw.spentMs || {}) };
       SECTIONS.forEach((s) => {
         raw.timings[s.id] = { ...(raw.timings[s.id] || {}) };
         raw.skips[s.id] = { ...(raw.skips[s.id] || {}) };
+        raw.sectionMinutes[s.id] = Math.max(1, Number(raw.sectionMinutes[s.id]) || 15);
+        raw.spentMs[s.id] = Math.max(0, Number(raw.spentMs[s.id]) || 0);
       });
+      raw.alarmOn = raw.alarmOn !== false;
+      raw.alarmEveryMin = Math.max(1, Number(raw.alarmEveryMin) || 15);
+      raw.alarmTickMs = Number(raw.alarmTickMs) || 0;
       raw.qIndex = Math.min(Math.max(Number(raw.qIndex) || 1, 1), SECTION_SIZE + 1);
       raw.qStartedAt = null;
       raw.reviewMode = Boolean(raw.reviewMode);
@@ -129,10 +150,10 @@
       raw.examIndex = Number.isInteger(raw.examIndex)
         ? Math.min(Math.max(raw.examIndex, 0), SECTIONS.length - 1)
         : 0;
-      if (parsed.examMode !== true || Number(parsed.remainingMs) > 15 * 60 * 1000) {
+      if (parsed.examMode !== true || Number(parsed.remainingMs) > 3 * 60 * 60 * 1000) {
         raw.examIndex = 0;
         raw.section = SECTIONS[0].id;
-        raw.remainingMs = 15 * 60 * 1000;
+        raw.remainingMs = Math.max(1, Number(raw.sectionMinutes[SECTIONS[0].id]) || 15) * 60 * 1000;
         raw.running = false;
         raw.lastTick = null;
       }
@@ -231,21 +252,39 @@
     if (state.qIndex >= 1 && state.qIndex <= SECTION_SIZE) state.qStartedAt = Date.now();
   }
 
+  function sectionLimitMs(id = state.section) {
+    return Math.max(1, Number(state.sectionMinutes?.[id]) || 15) * 60 * 1000;
+  }
+
+  function totalLimitMs() {
+    return SECTIONS.reduce((n, s) => n + sectionLimitMs(s.id), 0);
+  }
+
+  function bankCurrentSpent() {
+    if (!state.spentMs) state.spentMs = emptySpent();
+    state.spentMs[state.section] = Math.max(0, sectionLimitMs() - state.remainingMs);
+  }
+
   function examElapsedMs() {
-    const usedInSection = 15 * 60 * 1000 - state.remainingMs;
-    return state.examIndex * 15 * 60 * 1000 + Math.max(0, usedInSection);
+    let n = 0;
+    SECTIONS.forEach((s, i) => {
+      if (i < state.examIndex) n += Number((state.spentMs && state.spentMs[s.id]) || 0);
+      else if (i === state.examIndex) n += Math.max(0, sectionLimitMs(s.id) - state.remainingMs);
+    });
+    return n;
   }
 
   function renderTimer() {
     const idx = Math.min(state.examIndex, SECTIONS.length - 1);
     const name = SECTIONS[idx].name;
     els.timerNow.textContent = formatClock(state.remainingMs);
-    els.timerTotal.textContent = "/ 15분";
+    els.timerTotal.textContent = `/ ${Math.round(sectionLimitMs() / 60000)}분`;
     if (els.examSubject) els.examSubject.textContent = name;
     if (els.examStep) els.examStep.textContent = `${idx + 1} / 5`;
     if (els.examOverall) {
-      els.examOverall.textContent = `전체 ${formatTime(examElapsedMs())} / 75분`;
+      els.examOverall.textContent = `전체 ${formatTime(examElapsedMs())} / ${formatTime(totalLimitMs())}`;
     }
+    if (els.alarmOn) els.alarmOn.checked = state.alarmOn !== false;
     if (els.timerToggle) {
       els.timerToggle.hidden = startedExam();
       els.timerToggle.textContent = "연습 시작";
@@ -265,16 +304,18 @@
 
   function armExam(fromStart = true) {
     state.examMode = true;
-    state.timerMinutes = 15;
+    state.timerMinutes = Math.round(sectionLimitMs(state.section) / 60000);
     if (fromStart) {
       state.examIndex = 0;
       state.section = SECTIONS[0].id;
+      state.spentMs = emptySpent();
+      state.alarmTickMs = 0;
     } else {
       const idx = SECTIONS.findIndex((s) => s.id === state.section);
       state.examIndex = idx >= 0 ? idx : 0;
       state.section = SECTIONS[state.examIndex].id;
     }
-    state.remainingMs = 15 * 60 * 1000;
+    state.remainingMs = sectionLimitMs(state.section);
     state.running = false;
     state.lastTick = null;
     if (fromStart) {
@@ -305,9 +346,10 @@
   function onSectionTimeUp() {
     const next = state.examIndex + 1;
     if (next >= SECTIONS.length) {
-      beep("finish");
+      if (state.alarmOn) beep("finish");
       addTimeToCurrent();
       skipRestOfSection();
+      bankCurrentSpent();
       state.running = false;
       state.remainingMs = 0;
       state.lastTick = null;
@@ -323,13 +365,15 @@
       openGradeModal(true);
       return;
     }
-    beep("section");
+    if (state.sound && state.alarmOn) beep("section");
     addTimeToCurrent();
     skipRestOfSection();
+    bankCurrentSpent();
+    const endedMin = Math.round(sectionLimitMs(state.section) / 60000);
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
-    state.remainingMs = 15 * 60 * 1000;
+    state.remainingMs = sectionLimitMs(SECTIONS[next].id);
     state.lastTick = Date.now();
     startQuestionClock();
     renderOMR();
@@ -337,13 +381,22 @@
     persist();
     const name = SECTIONS[next].name;
     document.title = `${name} · SKCT 연습창`;
-    showToast(`15분 종료. ${name}으로 넘어갑니다.`);
+    showToast(`${endedMin}분 종료. ${name}으로 넘어갑니다.`);
   }
 
   function tick() {
     if (!state.running) return;
     const now = Date.now();
-    state.remainingMs = Math.max(0, state.remainingMs - (now - state.lastTick));
+    const dt = now - (state.lastTick || now);
+    state.remainingMs = Math.max(0, state.remainingMs - dt);
+    if (state.alarmOn) {
+      state.alarmTickMs = (state.alarmTickMs || 0) + dt;
+      const every = Math.max(1, Number(state.alarmEveryMin) || 15) * 60 * 1000;
+      if (state.alarmTickMs >= every) {
+        beep("section");
+        state.alarmTickMs %= every;
+      }
+    }
     state.lastTick = now;
     renderTimer();
     if (state.remainingMs <= 0) {
@@ -353,7 +406,7 @@
         state.running = false;
         stopClock();
         persist();
-        if (state.sound) beep("section");
+        if (state.alarmOn) beep("section");
       }
     }
   }
@@ -1359,6 +1412,7 @@
     if (!confirm("이 과목의 남은 문항을 스킵하고 다음 영역으로 갈까요?")) return;
     addTimeToCurrent();
     skipRestOfSection();
+    bankCurrentSpent();
     const next = state.examIndex + 1;
     if (next >= SECTIONS.length) {
       state.running = false;
@@ -1372,7 +1426,7 @@
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
-    state.remainingMs = 15 * 60 * 1000;
+    state.remainingMs = sectionLimitMs(SECTIONS[next].id);
     state.lastTick = Date.now();
     startQuestionClock();
     renderOMR();
@@ -1508,6 +1562,32 @@
     el.hidden = true;
   }
 
+  function fillSettingsForm() {
+    const box = $("#settings-times");
+    if (box) {
+      box.innerHTML = SECTIONS.map(
+        (s) =>
+          `<label>${s.name} (분)<input type="number" min="1" max="60" data-section="${s.id}" value="${
+            state.sectionMinutes[s.id] || 15
+          }" /></label>`
+      ).join("");
+    }
+    if ($("#settings-alarm-on")) $("#settings-alarm-on").checked = state.alarmOn !== false;
+    if ($("#settings-alarm-min")) $("#settings-alarm-min").value = String(state.alarmEveryMin || 15);
+  }
+
+  function saveSettings() {
+    $$("#settings-times input[data-section]").forEach((inp) => {
+      state.sectionMinutes[inp.dataset.section] = Math.max(1, Number(inp.value) || 15);
+    });
+    state.alarmOn = Boolean($("#settings-alarm-on") && $("#settings-alarm-on").checked);
+    state.alarmEveryMin = Math.max(1, Number($("#settings-alarm-min") && $("#settings-alarm-min").value) || 15);
+    if (!startedExam()) state.remainingMs = sectionLimitMs();
+    renderTimer();
+    persist();
+    if (els.settingsModal) closeModal(els.settingsModal);
+  }
+
   function bind() {
     els.timerToggle.addEventListener("click", () => {
       if (state.reviewMode) {
@@ -1554,7 +1634,7 @@
       renderTimer();
       persist();
       ensureAudio();
-      beep("finish");
+      if (state.alarmOn) beep("finish");
       if (els.gradeIntro) {
         els.gradeIntro.textContent =
           "채점하려면 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
@@ -1743,12 +1823,17 @@
           closeModal(els.recordsModal);
           return;
         }
+        if (els.settingsModal && !els.settingsModal.hidden) {
+          closeModal(els.settingsModal);
+          return;
+        }
       }
       if (
         !els.helpModal.hidden ||
         !els.gradeModal.hidden ||
         (els.finishModal && !els.finishModal.hidden) ||
-        (els.recordsModal && !els.recordsModal.hidden)
+        (els.recordsModal && !els.recordsModal.hidden) ||
+        (els.settingsModal && !els.settingsModal.hidden)
       )
         return;
       if (typingInField()) return;
@@ -1773,6 +1858,22 @@
         inputCalc(e.key);
       }
     });
+
+    if (els.alarmOn) {
+      els.alarmOn.addEventListener("change", () => {
+        state.alarmOn = els.alarmOn.checked;
+        persist();
+      });
+    }
+    if (els.settingsBtn) {
+      els.settingsBtn.addEventListener("click", () => {
+        fillSettingsForm();
+        openModal(els.settingsModal);
+      });
+    }
+    if ($("#settings-close")) $("#settings-close").addEventListener("click", () => closeModal(els.settingsModal));
+    if ($("#settings-cancel")) $("#settings-cancel").addEventListener("click", () => closeModal(els.settingsModal));
+    if ($("#settings-save")) $("#settings-save").addEventListener("click", saveSettings);
 
     $("#help-btn").addEventListener("click", () => openModal(els.helpModal));
     $("#help-close").addEventListener("click", () => closeModal(els.helpModal));

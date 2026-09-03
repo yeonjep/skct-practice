@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SKCT 연습창</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=7" />
+    <link rel="stylesheet" href="styles.css?v=8" />
   </head>
   <body>
     <div class="app">
@@ -24,6 +24,7 @@
             </div>
           </div>
           <button type="button" class="icon-btn" id="records-btn" title="저장한 회차">기록</button>
+          <button type="button" class="icon-btn" id="settings-btn" title="설정">설정</button>
           <button type="button" class="icon-btn" id="help-btn" title="사용 설명">?</button>
         </div>
       </header>
@@ -58,6 +59,10 @@
                 <span class="timer-total" id="timer-total">/ 15분</span>
               </div>
               <div class="exam-overall" id="exam-overall">전체 00분 00초 / 75분</div>
+              <label class="alarm-check">
+                <input type="checkbox" id="alarm-on" checked />
+                알람음 울리기
+              </label>
               <p class="timer-ready" id="timer-ready">시작을 누르면 문항 시간이 측정됩니다. 다음·스킵 후에는 돌아올 수 없습니다.</p>
               <div class="timer-actions">
                 <button type="button" class="btn btn-primary" id="timer-toggle">연습 시작</button>
@@ -246,10 +251,34 @@
       </div>
     </div>
 
-    <script src="firebase-config.js?v=6"></script>
+    <div class="modal" id="settings-modal" hidden>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>설정</h2>
+          <button type="button" class="icon-btn" id="settings-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="field-label">시간 (분)</p>
+          <div class="settings-times" id="settings-times"></div>
+          <label class="alarm-check settings-alarm">
+            <input type="checkbox" id="settings-alarm-on" />
+            알람음 울리기
+          </label>
+          <label class="field-label" for="settings-alarm-min">알람 간격 (분)</label>
+          <input id="settings-alarm-min" type="number" min="1" max="75" value="15" />
+          <p class="excel-hint">체크되어 있을 때만, 설정한 분마다 알람이 납니다. 과목 시간이 끝나면 다음 과목으로 넘어갑니다.</p>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn" id="settings-cancel">닫기</button>
+          <button type="button" class="btn btn-primary" id="settings-save">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="firebase-config.js?v=8"></script>
     <script src="vendor/firebase-app-compat.js"></script>
     <script src="vendor/firebase-auth-compat.js"></script>
     <script src="vendor/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=7"></script>
+    <script src="app.js?v=8"></script>
   </body>
 </html>

@@ -203,6 +203,7 @@ input {
 
 .topbar .icon-btn#omr-toggle,
 .topbar .icon-btn#records-btn,
+.topbar .icon-btn#settings-btn,
 .topbar .icon-btn#login-btn,
 .topbar .icon-btn#logout-btn {
   width: auto;
@@ -255,7 +256,7 @@ input {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
   overflow: hidden;
 }
 
@@ -318,30 +319,40 @@ input {
 
 .omr-sections {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
-  padding: 8px;
+  padding: 6px;
   border-bottom: 1px solid var(--line);
 }
 
 .omr-sec {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
+  justify-content: center;
+  gap: 1px;
   border: 1px solid var(--line);
   background: #f8fafc;
   color: var(--ink);
   border-radius: 7px;
-  padding: 6px 7px;
-  font-size: 11px;
+  padding: 5px 2px;
+  font-size: 10px;
   font-weight: 700;
   cursor: pointer;
-  text-align: left;
+  text-align: center;
+  min-width: 0;
+}
+
+.omr-sec span {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .omr-sec:last-child {
-  grid-column: 1 / -1;
+  grid-column: auto;
 }
 
 .omr-sec em {
@@ -390,10 +401,10 @@ input {
 
 .omr-row {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 6px;
   border-radius: 8px;
   border: 1px solid transparent;
 }
@@ -417,6 +428,28 @@ input {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.omr-choices {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.omr-choice {
+  width: auto;
+  height: 30px;
+  flex: 1 1 0;
+  max-width: none;
+  border-radius: 999px;
+  border: 1.5px solid #94a3b8;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .omr-next,
@@ -455,25 +488,6 @@ input {
   text-align: right;
 }
 
-.omr-choices {
-  display: flex;
-  gap: 3px;
-}
-
-.omr-choice {
-  width: 24px;
-  height: 24px;
-  flex: 1 1 0;
-  max-width: 28px;
-  border-radius: 999px;
-  border: 1.5px solid #94a3b8;
-  background: #fff;
-  color: #334155;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
 .omr-choice.is-on {
   background: #1d4ed8;
   border-color: #1d4ed8;
@@ -495,14 +509,62 @@ input {
   color: var(--muted);
 }
 
+.alarm-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink);
+  user-select: none;
+}
+
+.alarm-check input {
+  accent-color: var(--accent);
+}
+
+.settings-times {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.settings-times label {
+  display: grid;
+  grid-template-columns: 1fr 72px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.settings-times input,
+#settings-alarm-min {
+  width: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.settings-alarm {
+  margin: 8px 0 12px;
+}
+
 .desk {
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px;
+  padding: 6px;
   overflow: hidden;
+}
+
+.omr-list {
+  padding: 4px 6px 8px;
+}
+
+.omr-footer {
+  padding: 6px 8px;
 }
 
 .notepad-card,
@@ -1156,12 +1218,6 @@ input {
 .omr-sec.is-locked {
   opacity: 0.4;
   pointer-events: none;
-}
-
-.omr-choice {
-  width: 28px;
-  height: 28px;
-  max-width: 36px;
 }
 
 .result-weak {
