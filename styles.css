@@ -256,7 +256,7 @@ input {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  grid-template-columns: max-content minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -266,7 +266,8 @@ input {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  min-width: 0;
+  width: max-content;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -320,9 +321,11 @@ input {
 .omr-sections {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 4px;
+  gap: 3px;
   padding: 6px;
   border-bottom: 1px solid var(--line);
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .omr-sec {
@@ -332,11 +335,11 @@ input {
   justify-content: center;
   gap: 1px;
   border: 1px solid var(--line);
-  background: #f8fafc;
+  background: #fff;
   color: var(--ink);
   border-radius: 7px;
-  padding: 5px 2px;
-  font-size: 10px;
+  padding: 4px 1px;
+  font-size: 9px;
   font-weight: 700;
   cursor: pointer;
   text-align: center;
@@ -396,30 +399,34 @@ input {
 .omr-list {
   flex: 1;
   overflow: auto;
-  padding: 4px 8px 12px;
+  padding: 4px 6px 8px;
+  width: max-content;
+  max-width: 100%;
+  background: #fff;
 }
 
 .omr-row {
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px max-content;
   align-items: center;
   gap: 6px;
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-radius: 8px;
   border: 1px solid transparent;
+  background: #fff;
 }
 
 .omr-row.is-active {
   border-color: var(--accent);
-  background: #fff1f2;
+  background: #fff;
 }
 
 .omr-row.is-done {
-  opacity: 0.55;
+  opacity: 0.7;
 }
 
 .omr-row.is-skipped {
-  background: #fffbeb;
+  background: #fff;
 }
 
 .omr-row-main {
