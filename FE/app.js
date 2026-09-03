@@ -1141,8 +1141,26 @@
     localStorage.setItem(RECORDS_KEY, JSON.stringify(list));
   }
 
+  function firestoreSafe(value) {
+    return JSON.parse(
+      JSON.stringify(value, (_, v) => {
+        if (typeof v === "number" && !Number.isFinite(v)) return 0;
+        return v === undefined ? null : v;
+      })
+    );
+  }
+
   function recordsForUi() {
-    return currentUser ? cloudRecords : loadLocalRecords();
+    const local = loadLocalRecords();
+    if (!currentUser) return local;
+    const byId = new Map();
+    cloudRecords.forEach((r) => {
+      if (r && r.id) byId.set(r.id, r);
+    });
+    local.forEach((r) => {
+      if (r && r.id && !byId.has(r.id)) byId.set(r.id, r);
+    });
+    return [...byId.values()].sort((a, b) => String(b.savedAt || "").localeCompare(String(a.savedAt || "")));
   }
 
   function escapeHtml(s) {
@@ -1197,7 +1215,7 @@
       section: state.section,
       qIndex: Number(state.qIndex) || 1,
       examIndex: Number(state.examIndex) || 0,
-      remainingMs: remaining,
+      remainingMs: Number.isFinite(remaining) ? remaining : sectionLimitMs(state.section),
       spentMs: { ...emptySpent(), ...(state.spentMs || {}) },
       reviewMode: Boolean(state.reviewMode),
     };
@@ -1238,38 +1256,48 @@
       return;
     }
     const progress = examProgressSnapshot();
-    const record = {
+    const record = firestoreSafe({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       name,
       savedAt: new Date().toISOString(),
-      answers: JSON.parse(JSON.stringify(state.answers || emptyAnswers())),
+      answers: state.answers || emptyAnswers(),
       answerKeys: { ...defaultState().answerKeys, ...(state.answerKeys || {}) },
       note: state.note || "",
-      timings: JSON.parse(JSON.stringify(state.timings || emptyCountMap())),
-      skips: JSON.parse(JSON.stringify(state.skips || emptyCountMap())),
+      timings: state.timings || emptyCountMap(),
+      skips: state.skips || emptyCountMap(),
       score: currentScoreSnapshot(),
       progress,
       status: progress.reviewMode ? "graded" : "in-progress",
-    };
+    });
     try {
       const list = loadLocalRecords();
       list.unshift(record);
       persistRecords(list);
-      if (currentUser) {
-        await recordsRef().doc(record.id).set(record);
-        cloudRecords = [record, ...cloudRecords.filter((r) => r.id !== record.id)];
-        showSaveMsg(msgEl, `「${name}」을 계정에 저장했습니다. 나중에 이어서 풀 수 있습니다.`, true);
-      } else if (firebaseReady()) {
-        showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
-      } else {
-        showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다.`, true);
-      }
-      if (nameInput) nameInput.value = roundTitle();
-      if (source === "records") renderRecords();
     } catch (err) {
       console.warn(err);
-      showSaveMsg(msgEl, "저장에 실패했습니다. 잠시 후 다시 시도해 주세요.", false);
+      showSaveMsg(msgEl, "이 브라우저에 저장하지 못했습니다. 저장 공간이 부족할 수 있습니다.", false);
+      return;
     }
+    if (currentUser) {
+      try {
+        await recordsRef().doc(String(record.id)).set(record);
+        cloudRecords = [record, ...cloudRecords.filter((r) => r.id !== record.id)];
+        showSaveMsg(msgEl, `「${name}」을 계정에 저장했습니다. 나중에 이어서 풀 수 있습니다.`, true);
+      } catch (err) {
+        console.warn(err);
+        showSaveMsg(
+          msgEl,
+          `「${name}」을 이 브라우저에 저장했습니다. 계정 저장은 실패해서, 이 기기에서만 이어서 풀 수 있습니다.`,
+          true
+        );
+      }
+    } else if (firebaseReady()) {
+      showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다. 구글 로그인하면 계정에도 남습니다.`, true);
+    } else {
+      showSaveMsg(msgEl, `「${name}」을 이 브라우저에 저장했습니다.`, true);
+    }
+    if (nameInput) nameInput.value = roundTitle();
+    renderRecords();
   }
 
   function renderRecords() {
