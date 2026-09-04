@@ -1038,14 +1038,7 @@
   }
 
   function closeOrExitParen() {
-    if (!state.calcExpr) {
-      return;
-    }
-    if (charAfterCaret() === ")") {
-      calcCaret += 1;
-      return;
-    }
-    if (unmatchedOpenParens(state.calcExpr) < 1) return;
+    if (!state.calcExpr && state.calcOverwrite) lastCalcExpr = "";
     insertAtCaret(")");
   }
 
@@ -2365,7 +2358,9 @@
 
     $("#calc-keys").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-key]");
-      if (btn) inputCalc(btn.dataset.key);
+      if (!btn) return;
+      const key = btn.getAttribute("data-key");
+      if (key) inputCalc(key);
     });
     if (els.calcValue) {
       els.calcValue.addEventListener("click", caretFromClick);
