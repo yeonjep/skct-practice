@@ -805,33 +805,24 @@ input {
 }
 
 .calc-value {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #fff;
   font-size: 18px;
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  word-break: break-all;
+  caret-color: #fff;
+  outline: none;
+  padding: 0;
+  margin: 0;
   cursor: text;
 }
 
-.calc-ch {
-  cursor: text;
-}
-
-.calc-caret {
-  display: inline-block;
-  width: 1.5px;
-  height: 1.05em;
-  margin: 0 1px -2px;
-  background: #fff;
-  vertical-align: -2px;
-  animation: calc-blink 1s step-end infinite;
-}
-
-@keyframes calc-blink {
-  50% {
-    opacity: 0;
-  }
+.calc-value::placeholder {
+  color: #64748b;
 }
 
 .calc-keys {
