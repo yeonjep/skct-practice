@@ -1309,10 +1309,6 @@
       localStorage.setItem(flag, "1");
       return;
     }
-    if (!confirm("이 브라우저에 있는 회차 기록을 구글 계정에도 올릴까요?")) {
-      localStorage.setItem(flag, "1");
-      return;
-    }
     for (const rec of dedupeRecords(legacy)) {
       await recordsRef().doc(String(rec.id)).set(firestoreSafe(rec));
     }
@@ -1640,7 +1636,6 @@
   function applyRecord(id) {
     const rec = recordsForUi().find((r) => r.id === id);
     if (!rec) return;
-    if (startedExam() && !confirm("지금 화면의 답을 덮고 이 회차를 불러올까요?")) return;
     state.recordId = rec.id;
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
@@ -1688,7 +1683,7 @@
 
   async function deleteRecord(id) {
     const rec = recordsForUi().find((r) => r.id === id);
-    if (!rec || !confirm(`「${rec.name}」을(를) 지울까요?`)) return;
+    if (!rec) return;
     persistRecords(loadLocalRecords().filter((r) => r.id !== id));
     if (currentUser) {
       try {
@@ -1845,7 +1840,6 @@
 
   function skipWholeSection() {
     if (state.reviewMode) return;
-    if (!confirm("이 과목의 남은 문항을 스킵하고 다음 영역으로 갈까요?")) return;
     addTimeToCurrent();
     skipRestOfSection();
     bankCurrentSpent();
@@ -1898,7 +1892,6 @@
   }
 
   function resetExam() {
-    if (!confirm("시간과 표기한 답을 모두 지우고 처음부터 할까요?")) return;
     if (els.gradeModal && !els.gradeModal.hidden) closeModal(els.gradeModal);
     armExam(true);
   }
@@ -2031,7 +2024,6 @@
   function bind() {
     els.timerToggle.addEventListener("click", () => {
       if (state.reviewMode) {
-        if (!confirm("채점 화면을 닫고 이어서 연습할까요? 이미 넘어간 문항은 그대로입니다.")) return;
         state.reviewMode = false;
       }
       if (state.remainingMs <= 0 && state.examIndex >= SECTIONS.length - 1) armExam(true);
@@ -2233,11 +2225,9 @@
 
     $("#clear-surface").addEventListener("click", () => {
       if (els.paintWrap.hidden) {
-        if (!confirm("메모장을 비울까요?")) return;
         els.notepad.value = "";
         state.note = "";
       } else {
-        if (!confirm("그림판을 비울까요?")) return;
         pushUndo();
         const rect = els.paintWrap.getBoundingClientRect();
         paintCtx.fillStyle = "#fff";
