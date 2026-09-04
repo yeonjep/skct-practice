@@ -832,46 +832,18 @@
     return v === "Error" || v.includes("오류") || v.includes("없음");
   }
 
-  function liveCalcText() {
-    const value = String(state.calcValue ?? "0");
-    if (isCalcErrorValue(value)) return value;
-    if (!state.calcExpr) return value || "0";
-    if (!state.calcOverwrite) return `${state.calcExpr}${value}`;
-    return state.calcExpr;
+  function endsWithOp(expr) {
+    return /[+\-×÷]$/.test(expr);
   }
 
-  function currentCalcExpression() {
-    const expr = state.calcExpr || "";
-    const value = String(state.calcValue ?? "");
-    if (isCalcErrorValue(value)) return expr || "0";
-    if (!state.calcOverwrite) return expr + value;
-    if (!expr) return value || "0";
-    if (/[+\-×÷*/]$/.test(expr)) return expr.replace(/[+\-×÷*/]+$/, "") || value || "0";
-    return expr;
+  function isUnaryMinusTail(expr) {
+    return expr === "-" || expr.endsWith("(-");
   }
 
-  function formatNumber(n) {
-    if (!Number.isFinite(n)) return "Error";
-    const rounded = Math.round(n * 1e12) / 1e12;
-    return String(rounded);
-  }
-
-  function renderCalc() {
-    if (!els.calcExpr || !els.calcValue) return;
-    const value = String(state.calcValue ?? "0");
-    const composing = Boolean(state.calcExpr) || !state.calcOverwrite;
-    if (composing && !isCalcErrorValue(value)) {
-      els.calcExpr.textContent = "";
-      els.calcValue.textContent = liveCalcText();
-    } else {
-      els.calcExpr.textContent = lastCalcExpr;
-      els.calcValue.textContent = value;
-    }
-  }
-
-  function calcPendingExpr() {
-    if (!state.calcOverwrite) return `${state.calcExpr || ""}${state.calcValue || ""}`;
-    return state.calcExpr || "";
+  function lastNumberSpan(expr) {
+    const m = String(expr || "").match(/(\d+\.?\d*|\d*\.\d+)$/);
+    if (!m) return null;
+    return { start: expr.length - m[1].length, text: m[1] };
   }
 
   function unmatchedOpenParens(expr) {
@@ -883,37 +855,150 @@
     return n;
   }
 
-  function canOpenParen() {
-    return !calcPendingExpr().includes("(");
+  function liveCalcText() {
+    if (state.calcExpr) return state.calcExpr;
+    if (isCalcErrorValue(state.calcValue)) return String(state.calcValue);
+    return String(state.calcValue || "0");
   }
 
-  function canCloseParen() {
-    const expr = calcPendingExpr();
-    if (unmatchedOpenParens(expr) !== 1) return false;
-    const inside = expr.slice(expr.lastIndexOf("(") + 1);
-    return /\d/.test(inside);
+  function currentCalcExpression() {
+    let expr = state.calcExpr || "";
+    if (!expr) return isCalcErrorValue(state.calcValue) ? "0" : String(state.calcValue || "0");
+    while (endsWithOp(expr) && !isUnaryMinusTail(expr)) expr = expr.slice(0, -1);
+    while (unmatchedOpenParens(expr)) expr += ")";
+    return expr || "0";
+  }
+
+  function formatNumber(n) {
+    if (!Number.isFinite(n)) return "Error";
+    const rounded = Math.round(n * 1e12) / 1e12;
+    return String(rounded);
+  }
+
+  function renderCalc() {
+    if (!els.calcExpr || !els.calcValue) return;
+    if (state.calcExpr) {
+      els.calcExpr.textContent = "";
+      els.calcValue.textContent = state.calcExpr;
+    } else {
+      els.calcExpr.textContent = lastCalcExpr;
+      els.calcValue.textContent = String(state.calcValue ?? "0");
+    }
+  }
+
+  function resetCalc(all) {
+    state.calcExpr = "";
+    state.calcValue = "0";
+    state.calcOverwrite = true;
+    if (all) lastCalcExpr = "";
+  }
+
+  function backspaceCalc() {
+    if (state.calcExpr) {
+      state.calcExpr = state.calcExpr.slice(0, -1);
+      if (!state.calcExpr) resetCalc(false);
+      return;
+    }
+    resetCalc(true);
+  }
+
+  function appendCalcDigit(d) {
+    if (!state.calcExpr && state.calcOverwrite) {
+      lastCalcExpr = "";
+      state.calcExpr = d === "." ? "0." : d;
+      state.calcOverwrite = false;
+      return;
+    }
+    let expr = state.calcExpr || "";
+    if (expr.endsWith(")")) return;
+    if (d === ".") {
+      const span = lastNumberSpan(expr);
+      if (span && span.text.includes(".")) return;
+      if (!span) {
+        state.calcExpr = `${expr}0.`;
+        return;
+      }
+      state.calcExpr = `${expr}.`;
+      return;
+    }
+    const span = lastNumberSpan(expr);
+    if (span && span.text === "0" && !expr.endsWith(".")) {
+      state.calcExpr = expr.slice(0, span.start) + d;
+      return;
+    }
+    state.calcExpr = expr + d;
+    state.calcOverwrite = false;
+  }
+
+  function appendCalcOp(op) {
+    let expr = state.calcExpr || "";
+    if (!expr) {
+      if (isCalcErrorValue(state.calcValue)) {
+        if (op === "-") state.calcExpr = "-";
+        return;
+      }
+      const v = String(state.calcValue || "0");
+      if (v === "0" && op === "-") {
+        state.calcExpr = "-";
+        return;
+      }
+      expr = v;
+      lastCalcExpr = "";
+    }
+    if (expr.endsWith("(")) {
+      if (op === "-") state.calcExpr = `${expr}-`;
+      return;
+    }
+    if (isUnaryMinusTail(expr)) return;
+    if (endsWithOp(expr)) {
+      state.calcExpr = expr.slice(0, -1) + op;
+      return;
+    }
+    state.calcExpr = expr + op;
+    state.calcOverwrite = true;
+  }
+
+  function toggleCalcSign() {
+    if (!state.calcExpr) {
+      if (isCalcErrorValue(state.calcValue)) return;
+      if (String(state.calcValue).startsWith("-")) state.calcValue = String(state.calcValue).slice(1);
+      else if (state.calcValue !== "0") state.calcValue = `-${state.calcValue}`;
+      return;
+    }
+    const expr = state.calcExpr;
+    const span = lastNumberSpan(expr);
+    if (!span) {
+      if (isUnaryMinusTail(expr)) state.calcExpr = expr.slice(0, -1);
+      return;
+    }
+    const before = expr.slice(0, span.start);
+    if (before === "-") state.calcExpr = span.text;
+    else if (before.endsWith("(-")) state.calcExpr = before.slice(0, -1) + span.text;
+    else if (before.endsWith("(") || endsWithOp(before)) state.calcExpr = `${before}-${span.text}`;
+    else state.calcExpr = `-${expr}`;
+  }
+
+  function applyCalcPercent() {
+    if (!state.calcExpr) {
+      if (isCalcErrorValue(state.calcValue)) return;
+      state.calcValue = formatNumber(Number(state.calcValue) / 100);
+      return;
+    }
+    const span = lastNumberSpan(state.calcExpr);
+    if (!span) return;
+    state.calcExpr = state.calcExpr.slice(0, span.start) + formatNumber(Number(span.text) / 100);
   }
 
   function inputCalc(key) {
     const ops = new Set(["+", "-", "×", "÷"]);
     if (key === "AC") {
-      state.calcExpr = "";
-      state.calcValue = "0";
-      state.calcOverwrite = true;
-      lastCalcExpr = "";
+      resetCalc(true);
     } else if (key === "C") {
-      if (!state.calcOverwrite && state.calcValue.length > 1) {
-        state.calcValue = state.calcValue.slice(0, -1);
-      } else {
-        state.calcValue = "0";
-        state.calcOverwrite = true;
-      }
+      backspaceCalc();
     } else if (key === "±") {
-      if (state.calcValue.startsWith("-")) state.calcValue = state.calcValue.slice(1);
-      else if (state.calcValue !== "0") state.calcValue = `-${state.calcValue}`;
+      toggleCalcSign();
     } else if (key === "%") {
-      state.calcValue = formatNumber(Number(state.calcValue) / 100);
-      state.calcOverwrite = true;
+      applyCalcPercent();
     } else if (key === "=") {
       try {
         const expr = currentCalcExpression();
@@ -924,51 +1009,31 @@
         state.calcOverwrite = true;
       } catch (err) {
         lastCalcExpr = liveCalcText();
+        state.calcExpr = "";
         state.calcValue = err.message;
         state.calcOverwrite = true;
       }
     } else if (ops.has(key)) {
-      const broken =
-        state.calcValue === "Error" ||
-        String(state.calcValue).includes("오류") ||
-        String(state.calcValue).includes("없음");
-      if (!state.calcOverwrite || broken) {
-        state.calcExpr += (broken ? "" : state.calcValue) + key;
-      } else if (state.calcExpr && ops.has(state.calcExpr.slice(-1))) {
-        state.calcExpr = state.calcExpr.slice(0, -1) + key;
-      } else if (state.calcExpr.endsWith(")")) {
-        state.calcExpr += key;
-      } else {
-        state.calcExpr += (state.calcExpr ? "" : state.calcValue) + key;
-      }
-      state.calcOverwrite = true;
+      appendCalcOp(key);
     } else if (key === "(") {
-      if (!canOpenParen()) return renderCalc();
-      if (!state.calcOverwrite) state.calcExpr += state.calcValue;
-      state.calcExpr += "(";
+      const expr = state.calcExpr || "";
+      if (expr.includes("(") || expr.endsWith(")")) return renderCalc();
+      if (!expr && state.calcOverwrite && !isCalcErrorValue(state.calcValue) && state.calcValue !== "0") {
+        lastCalcExpr = "";
+        state.calcExpr = "(";
+      } else if (!expr || endsWithOp(expr) || isUnaryMinusTail(expr)) {
+        state.calcExpr = `${expr}(`;
+      }
       state.calcOverwrite = true;
     } else if (key === ")") {
-      if (!canCloseParen()) return renderCalc();
-      if (!state.calcOverwrite) {
-        state.calcExpr += `${state.calcValue})`;
-      } else {
-        state.calcExpr += ")";
-      }
+      const expr = state.calcExpr || "";
+      if (unmatchedOpenParens(expr) !== 1) return renderCalc();
+      const inside = expr.slice(expr.lastIndexOf("(") + 1);
+      if (!/\d/.test(inside) || (endsWithOp(expr) && !isUnaryMinusTail(expr))) return renderCalc();
+      state.calcExpr = `${expr})`;
       state.calcOverwrite = true;
-    } else if (key === ".") {
-      if (state.calcOverwrite) {
-        state.calcValue = "0.";
-        state.calcOverwrite = false;
-      } else if (!state.calcValue.includes(".")) {
-        state.calcValue += ".";
-      }
-    } else {
-      if (state.calcOverwrite) {
-        state.calcValue = key;
-        state.calcOverwrite = false;
-      } else {
-        state.calcValue = state.calcValue === "0" ? key : state.calcValue + key;
-      }
+    } else if (key === "." || /^[0-9]$/.test(key)) {
+      appendCalcDigit(key);
     }
     renderCalc();
     scheduleSave();

@@ -816,7 +816,7 @@ input {
 .calc-keys {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(6, minmax(28px, 1fr));
+  grid-template-rows: repeat(6, minmax(0, 1fr));
   gap: 3px;
   padding: 4px;
   background: #f4f7fb;
@@ -853,6 +853,7 @@ input {
 .calc-keys .eq {
   background: var(--accent);
   color: #fff;
+  grid-row: span 2;
 }
 
 .calc-keys .zero {
@@ -860,7 +861,7 @@ input {
 }
 
 .calc-keys .dot {
-  grid-column: span 2;
+  grid-column: span 1;
 }
 
 .toast {
