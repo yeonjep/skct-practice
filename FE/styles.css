@@ -850,18 +850,23 @@ input {
   color: #9f1239;
 }
 
+.calc-keys .plus,
+.calc-keys .eq {
+  grid-row: span 2;
+}
+
 .calc-keys .eq {
   background: var(--accent);
   color: #fff;
-  grid-row: span 2;
 }
 
 .calc-keys .zero {
   grid-column: span 2;
 }
 
-.calc-keys .dot {
-  grid-column: span 1;
+.calc-keys .backspace {
+  font-size: 16px;
+  line-height: 1;
 }
 
 .toast {
