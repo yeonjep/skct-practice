@@ -63,6 +63,7 @@
   let state = defaultState();
   let deskOwnerId = undefined;
   let lastCalcExpr = "";
+  let calcCaret = 0;
   let recordSaveBusy = false;
   let paintCtx = null;
   let drawing = false;
@@ -836,14 +837,60 @@
     return /[+\-×÷]$/.test(expr);
   }
 
-  function isUnaryMinusTail(expr) {
-    return expr === "-" || expr.endsWith("(-");
+  function isUnaryMinusAt(expr, index) {
+    const ch = expr.charAt(index);
+    if (ch !== "-") return false;
+    const prev = expr.charAt(index - 1);
+    return index === 0 || prev === "(" || /[+\-×÷]/.test(prev);
   }
 
-  function lastNumberSpan(expr) {
-    const m = String(expr || "").match(/(\d+\.?\d*|\d*\.\d+)$/);
-    if (!m) return null;
-    return { start: expr.length - m[1].length, text: m[1] };
+  function clampCalcCaret(expr, caret) {
+    return Math.max(0, Math.min(Number(caret) || 0, String(expr || "").length));
+  }
+
+  function setCalcFormula(expr, caret) {
+    state.calcExpr = expr;
+    calcCaret = clampCalcCaret(expr, caret);
+    state.calcOverwrite = Boolean(expr);
+    if (!expr) {
+      state.calcValue = "0";
+      state.calcOverwrite = true;
+      calcCaret = 0;
+    }
+  }
+
+  function defaultCalcCaret(expr) {
+    const text = String(expr || "");
+    const open = text.lastIndexOf("(");
+    if (open < 0) return text.length;
+    const close = text.indexOf(")", open);
+    if (close < 0) return text.length;
+    return close;
+  }
+
+  function charBeforeCaret() {
+    return (state.calcExpr || "").charAt(calcCaret - 1) || "";
+  }
+
+  function charAfterCaret() {
+    return (state.calcExpr || "").charAt(calcCaret) || "";
+  }
+
+  function numberAtCaret() {
+    const expr = state.calcExpr || "";
+    let start = calcCaret;
+    let end = calcCaret;
+    while (start > 0 && /[\d.]/.test(expr[start - 1])) start -= 1;
+    while (end < expr.length && /[\d.]/.test(expr[end])) end += 1;
+    const text = expr.slice(start, end);
+    if (!text || !/\d/.test(text)) return null;
+    return { start, end, text };
+  }
+
+  function insertAtCaret(str) {
+    const expr = state.calcExpr || "";
+    const i = clampCalcCaret(expr, calcCaret);
+    setCalcFormula(expr.slice(0, i) + str + expr.slice(i), i + str.length);
   }
 
   function unmatchedOpenParens(expr) {
@@ -864,8 +911,7 @@
   function currentCalcExpression() {
     let expr = state.calcExpr || "";
     if (!expr) return isCalcErrorValue(state.calcValue) ? "0" : String(state.calcValue || "0");
-    while (endsWithOp(expr) && !isUnaryMinusTail(expr)) expr = expr.slice(0, -1);
-    while (unmatchedOpenParens(expr)) expr += ")";
+    while (endsWithOp(expr) && !isUnaryMinusAt(expr, expr.length - 1)) expr = expr.slice(0, -1);
     return expr || "0";
   }
 
@@ -875,11 +921,31 @@
     return String(rounded);
   }
 
+  function renderCalcFormula(text, caret) {
+    els.calcValue.replaceChildren();
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i <= text.length; i += 1) {
+      if (i === caret) {
+        const mark = document.createElement("span");
+        mark.className = "calc-caret";
+        frag.appendChild(mark);
+      }
+      if (i < text.length) {
+        const ch = document.createElement("span");
+        ch.className = "calc-ch";
+        ch.dataset.index = String(i);
+        ch.textContent = text[i];
+        frag.appendChild(ch);
+      }
+    }
+    els.calcValue.appendChild(frag);
+  }
+
   function renderCalc() {
     if (!els.calcExpr || !els.calcValue) return;
     if (state.calcExpr) {
       els.calcExpr.textContent = "";
-      els.calcValue.textContent = state.calcExpr;
+      renderCalcFormula(state.calcExpr, clampCalcCaret(state.calcExpr, calcCaret));
     } else {
       els.calcExpr.textContent = lastCalcExpr;
       els.calcValue.textContent = String(state.calcValue ?? "0");
@@ -890,72 +956,97 @@
     state.calcExpr = "";
     state.calcValue = "0";
     state.calcOverwrite = true;
+    calcCaret = 0;
     if (all) lastCalcExpr = "";
   }
 
   function backspaceCalc() {
-    if (state.calcExpr) {
-      state.calcExpr = state.calcExpr.slice(0, -1);
-      if (!state.calcExpr) resetCalc(false);
+    if (!state.calcExpr) {
+      resetCalc(true);
       return;
     }
-    resetCalc(true);
+    if (calcCaret <= 0) return;
+    const expr = state.calcExpr;
+    if (expr[calcCaret - 1] === "(" && expr[calcCaret] === ")") {
+      setCalcFormula(expr.slice(0, calcCaret - 1) + expr.slice(calcCaret + 1), calcCaret - 1);
+      return;
+    }
+    setCalcFormula(expr.slice(0, calcCaret - 1) + expr.slice(calcCaret), calcCaret - 1);
   }
 
   function appendCalcDigit(d) {
     if (!state.calcExpr && state.calcOverwrite) {
       lastCalcExpr = "";
-      state.calcExpr = d === "." ? "0." : d;
-      state.calcOverwrite = false;
+      setCalcFormula(d === "." ? "0." : d, 1 + (d === "." ? 1 : 0));
+      if (d !== ".") calcCaret = 1;
       return;
     }
-    let expr = state.calcExpr || "";
-    if (expr.endsWith(")")) return;
+    if (charBeforeCaret() === ")" && !charAfterCaret()) return;
     if (d === ".") {
-      const span = lastNumberSpan(expr);
-      if (span && span.text.includes(".")) return;
-      if (!span) {
-        state.calcExpr = `${expr}0.`;
+      const num = numberAtCaret();
+      if (num && num.text.includes(".")) return;
+      if (!num) {
+        insertAtCaret("0.");
         return;
       }
-      state.calcExpr = `${expr}.`;
+      insertAtCaret(".");
       return;
     }
-    const span = lastNumberSpan(expr);
-    if (span && span.text === "0" && !expr.endsWith(".")) {
-      state.calcExpr = expr.slice(0, span.start) + d;
+    const num = numberAtCaret();
+    if (num && num.text === "0" && !num.text.includes(".") && calcCaret === num.end) {
+      setCalcFormula(
+        (state.calcExpr || "").slice(0, num.start) + d + (state.calcExpr || "").slice(num.end),
+        num.start + 1
+      );
       return;
     }
-    state.calcExpr = expr + d;
-    state.calcOverwrite = false;
+    insertAtCaret(d);
   }
 
   function appendCalcOp(op) {
-    let expr = state.calcExpr || "";
-    if (!expr) {
+    if (!state.calcExpr) {
       if (isCalcErrorValue(state.calcValue)) {
-        if (op === "-") state.calcExpr = "-";
+        if (op === "-") setCalcFormula("-", 1);
         return;
       }
       const v = String(state.calcValue || "0");
       if (v === "0" && op === "-") {
-        state.calcExpr = "-";
+        setCalcFormula("-", 1);
         return;
       }
-      expr = v;
       lastCalcExpr = "";
-    }
-    if (expr.endsWith("(")) {
-      if (op === "-") state.calcExpr = `${expr}-`;
+      setCalcFormula(v + op, v.length + 1);
       return;
     }
-    if (isUnaryMinusTail(expr)) return;
-    if (endsWithOp(expr)) {
-      state.calcExpr = expr.slice(0, -1) + op;
+    const before = charBeforeCaret();
+    if (!before || before === "(") {
+      if (op === "-") insertAtCaret("-");
       return;
     }
-    state.calcExpr = expr + op;
-    state.calcOverwrite = true;
+    if (/[+\-×÷]/.test(before)) {
+      if (isUnaryMinusAt(state.calcExpr, calcCaret - 1)) return;
+      const expr = state.calcExpr;
+      setCalcFormula(expr.slice(0, calcCaret - 1) + op + expr.slice(calcCaret), calcCaret);
+      return;
+    }
+    insertAtCaret(op);
+  }
+
+  function insertCalcParens() {
+    if (!state.calcExpr && state.calcOverwrite) lastCalcExpr = "";
+    insertAtCaret("(");
+  }
+
+  function closeOrExitParen() {
+    if (!state.calcExpr) {
+      return;
+    }
+    if (charAfterCaret() === ")") {
+      calcCaret += 1;
+      return;
+    }
+    if (unmatchedOpenParens(state.calcExpr) < 1) return;
+    insertAtCaret(")");
   }
 
   function toggleCalcSign() {
@@ -966,16 +1057,22 @@
       return;
     }
     const expr = state.calcExpr;
-    const span = lastNumberSpan(expr);
-    if (!span) {
-      if (isUnaryMinusTail(expr)) state.calcExpr = expr.slice(0, -1);
+    const num = numberAtCaret();
+    if (!num) {
+      if (charBeforeCaret() === "-" && isUnaryMinusAt(expr, calcCaret - 1)) {
+        setCalcFormula(expr.slice(0, calcCaret - 1) + expr.slice(calcCaret), calcCaret - 1);
+      }
       return;
     }
-    const before = expr.slice(0, span.start);
-    if (before === "-") state.calcExpr = span.text;
-    else if (before.endsWith("(-")) state.calcExpr = before.slice(0, -1) + span.text;
-    else if (before.endsWith("(") || endsWithOp(before)) state.calcExpr = `${before}-${span.text}`;
-    else state.calcExpr = `-${expr}`;
+    const before = expr.slice(0, num.start);
+    if (before === "-") setCalcFormula(num.text + expr.slice(num.end), calcCaret - 1);
+    else if (before.endsWith("(-")) {
+      setCalcFormula(before.slice(0, -1) + num.text + expr.slice(num.end), calcCaret - 1);
+    } else if (before.endsWith("(") || endsWithOp(before)) {
+      setCalcFormula(`${before}-${num.text}${expr.slice(num.end)}`, calcCaret + 1);
+    } else {
+      setCalcFormula(`-${expr}`, calcCaret + 1);
+    }
   }
 
   function applyCalcPercent() {
@@ -984,9 +1081,30 @@
       state.calcValue = formatNumber(Number(state.calcValue) / 100);
       return;
     }
-    const span = lastNumberSpan(state.calcExpr);
-    if (!span) return;
-    state.calcExpr = state.calcExpr.slice(0, span.start) + formatNumber(Number(span.text) / 100);
+    const num = numberAtCaret();
+    if (!num) return;
+    const next = formatNumber(Number(num.text) / 100);
+    setCalcFormula((state.calcExpr || "").slice(0, num.start) + next + (state.calcExpr || "").slice(num.end), num.start + next.length);
+  }
+
+  function moveCalcCaret(delta) {
+    if (!state.calcExpr) return;
+    calcCaret = clampCalcCaret(state.calcExpr, calcCaret + delta);
+    renderCalc();
+  }
+
+  function caretFromClick(e) {
+    if (!state.calcExpr || !els.calcValue) return;
+    const ch = e.target.closest(".calc-ch");
+    if (ch && ch.dataset.index != null) {
+      const i = Number(ch.dataset.index);
+      const rect = ch.getBoundingClientRect();
+      calcCaret = e.clientX < rect.left + rect.width / 2 ? i : i + 1;
+    } else {
+      const rect = els.calcValue.getBoundingClientRect();
+      calcCaret = e.clientX < rect.left + rect.width / 2 ? 0 : state.calcExpr.length;
+    }
+    renderCalc();
   }
 
   function inputCalc(key) {
@@ -1007,31 +1125,20 @@
         state.calcExpr = "";
         state.calcValue = formatNumber(result);
         state.calcOverwrite = true;
+        calcCaret = 0;
       } catch (err) {
         lastCalcExpr = liveCalcText();
         state.calcExpr = "";
         state.calcValue = err.message;
         state.calcOverwrite = true;
+        calcCaret = 0;
       }
     } else if (ops.has(key)) {
       appendCalcOp(key);
     } else if (key === "(") {
-      const expr = state.calcExpr || "";
-      if (expr.includes("(") || expr.endsWith(")")) return renderCalc();
-      if (!expr && state.calcOverwrite && !isCalcErrorValue(state.calcValue) && state.calcValue !== "0") {
-        lastCalcExpr = "";
-        state.calcExpr = "(";
-      } else if (!expr || endsWithOp(expr) || isUnaryMinusTail(expr)) {
-        state.calcExpr = `${expr}(`;
-      }
-      state.calcOverwrite = true;
+      insertCalcParens();
     } else if (key === ")") {
-      const expr = state.calcExpr || "";
-      if (unmatchedOpenParens(expr) !== 1) return renderCalc();
-      const inside = expr.slice(expr.lastIndexOf("(") + 1);
-      if (!/\d/.test(inside) || (endsWithOp(expr) && !isUnaryMinusTail(expr))) return renderCalc();
-      state.calcExpr = `${expr})`;
-      state.calcOverwrite = true;
+      closeOrExitParen();
     } else if (key === "." || /^[0-9]$/.test(key)) {
       appendCalcDigit(key);
     }
@@ -1190,6 +1297,7 @@
     if (els.notepad) els.notepad.value = state.note || "";
     renderOMR();
     renderTimer();
+    calcCaret = defaultCalcCaret(state.calcExpr || "");
     renderCalc();
     applyPaintStyle();
     setupPaint();
@@ -2259,6 +2367,9 @@
       const btn = e.target.closest("button[data-key]");
       if (btn) inputCalc(btn.dataset.key);
     });
+    if (els.calcValue) {
+      els.calcValue.addEventListener("click", caretFromClick);
+    }
 
     window.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
@@ -2292,6 +2403,19 @@
       )
         return;
       if (typingInField()) return;
+      if (state.calcExpr && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End")) {
+        e.preventDefault();
+        if (e.key === "ArrowLeft") moveCalcCaret(-1);
+        else if (e.key === "ArrowRight") moveCalcCaret(1);
+        else if (e.key === "Home") {
+          calcCaret = 0;
+          renderCalc();
+        } else {
+          calcCaret = state.calcExpr.length;
+          renderCalc();
+        }
+        return;
+      }
       const map = {
         Enter: "=",
         "=": "=",

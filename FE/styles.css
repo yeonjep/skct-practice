@@ -811,6 +811,27 @@ input {
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   word-break: break-all;
+  cursor: text;
+}
+
+.calc-ch {
+  cursor: text;
+}
+
+.calc-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 1.05em;
+  margin: 0 1px -2px;
+  background: #fff;
+  vertical-align: -2px;
+  animation: calc-blink 1s step-end infinite;
+}
+
+@keyframes calc-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 .calc-keys {
