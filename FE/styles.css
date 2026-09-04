@@ -748,11 +748,11 @@ input {
   resize: none;
   padding: 0 14px;
   outline: none;
-  font-size: 16px;
-  line-height: 28px;
+  font-size: 12px;
+  line-height: 18px;
   background-color: #fff;
   background-image: linear-gradient(#d4deea 1px, transparent 1px);
-  background-size: 100% 28px;
+  background-size: 100% 18px;
   background-attachment: local;
 }
 
