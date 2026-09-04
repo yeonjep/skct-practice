@@ -708,6 +708,10 @@
     }
   }
 
+  function isNumberToken(t) {
+    return typeof t === "string" && /^-?\d*\.?\d+$/.test(t);
+  }
+
   function tokenize(expr) {
     const tokens = [];
     let i = 0;
@@ -737,7 +741,17 @@
       }
       throw new Error("잘못된 수식");
     }
-    return tokens;
+    const out = [];
+    for (const t of tokens) {
+      if (out.length) {
+        const prev = out[out.length - 1];
+        const prevValue = isNumberToken(prev) || prev === ")" || prev === "%";
+        const nextValue = isNumberToken(t) || t === "(" || t === "u+" || t === "u-";
+        if (prevValue && nextValue) out.push("×");
+      }
+      out.push(t);
+    }
+    return out;
   }
 
   function toRPN(tokens) {
@@ -746,7 +760,7 @@
     const prec = { "u+": 5, "u-": 5, "%": 4, "×": 3, "÷": 3, "*": 3, "/": 3, "+": 2, "-": 2 };
     const right = new Set(["u+", "u-", "%"]);
     for (const t of tokens) {
-      if (!Number.isNaN(Number(t))) {
+      if (isNumberToken(t)) {
         out.push(t);
       } else if (t === "(") {
         ops.push(t);
@@ -776,35 +790,51 @@
   function evalRPN(rpn) {
     const st = [];
     for (const t of rpn) {
-      if (!Number.isNaN(Number(t))) {
+      if (isNumberToken(t)) {
         st.push(Number(t));
         continue;
       }
       if (t === "u-") {
+        if (!st.length) throw new Error("수식 오류");
         st.push(-st.pop());
         continue;
       }
       if (t === "u+") {
+        if (!st.length) throw new Error("수식 오류");
         st.push(+st.pop());
         continue;
       }
       if (t === "%") {
+        if (!st.length) throw new Error("수식 오류");
         st.push(st.pop() / 100);
         continue;
       }
       const b = st.pop();
       const a = st.pop();
       if (a === undefined || b === undefined) throw new Error("수식 오류");
-      if (t === "+" ) st.push(a + b);
+      if (t === "+") st.push(a + b);
       else if (t === "-") st.push(a - b);
       else if (t === "×" || t === "*") st.push(a * b);
       else if (t === "÷" || t === "/") {
         if (b === 0) throw new Error("0으로 나눌 수 없음");
         st.push(a / b);
+      } else {
+        throw new Error("수식 오류");
       }
     }
     if (st.length !== 1) throw new Error("수식 오류");
     return st[0];
+  }
+
+  function currentCalcExpression() {
+    const expr = state.calcExpr || "";
+    const value = String(state.calcValue ?? "");
+    const broken = value === "Error" || value.includes("오류") || value.includes("없음");
+    if (broken) return expr || "0";
+    if (!state.calcOverwrite) return expr + value;
+    if (!expr) return value || "0";
+    if (/[+\-×÷*/]$/.test(expr)) return expr + value;
+    return expr;
   }
 
   function formatNumber(n) {
@@ -839,7 +869,7 @@
       state.calcOverwrite = true;
     } else if (key === "=") {
       try {
-        const expr = (state.calcExpr + state.calcValue).replace(/×/g, "×").replace(/÷/g, "÷");
+        const expr = currentCalcExpression();
         const result = evalRPN(toRPN(tokenize(expr)));
         state.calcExpr = "";
         state.calcValue = formatNumber(result);
@@ -849,20 +879,31 @@
         state.calcOverwrite = true;
       }
     } else if (ops.has(key)) {
-      if (!state.calcOverwrite || state.calcValue === "Error" || state.calcValue.includes("오류") || state.calcValue.includes("없음")) {
-        state.calcExpr += state.calcValue + key;
+      const broken =
+        state.calcValue === "Error" ||
+        String(state.calcValue).includes("오류") ||
+        String(state.calcValue).includes("없음");
+      if (!state.calcOverwrite || broken) {
+        state.calcExpr += (broken ? "" : state.calcValue) + key;
       } else if (state.calcExpr && ops.has(state.calcExpr.slice(-1))) {
         state.calcExpr = state.calcExpr.slice(0, -1) + key;
+      } else if (state.calcExpr.endsWith(")")) {
+        state.calcExpr += key;
       } else {
         state.calcExpr += (state.calcExpr ? "" : state.calcValue) + key;
       }
       state.calcOverwrite = true;
-    } else if (key === "(" || key === ")") {
-      state.calcExpr += (state.calcOverwrite ? "" : state.calcValue) + key;
+    } else if (key === "(") {
+      if (!state.calcOverwrite) state.calcExpr += state.calcValue;
+      state.calcExpr += "(";
+      state.calcOverwrite = true;
+    } else if (key === ")") {
       if (!state.calcOverwrite) {
-        state.calcValue = "0";
-        state.calcOverwrite = true;
+        state.calcExpr += `${state.calcValue})`;
+      } else {
+        state.calcExpr += ")";
       }
+      state.calcOverwrite = true;
     } else if (key === ".") {
       if (state.calcOverwrite) {
         state.calcValue = "0.";
