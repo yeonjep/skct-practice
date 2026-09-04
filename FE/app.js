@@ -62,6 +62,7 @@
 
   let state = defaultState();
   let deskOwnerId = undefined;
+  let lastCalcExpr = "";
   let recordSaveBusy = false;
   let paintCtx = null;
   let drawing = false;
@@ -826,14 +827,26 @@
     return st[0];
   }
 
+  function isCalcErrorValue(value) {
+    const v = String(value ?? "");
+    return v === "Error" || v.includes("오류") || v.includes("없음");
+  }
+
+  function liveCalcText() {
+    const value = String(state.calcValue ?? "0");
+    if (isCalcErrorValue(value)) return value;
+    if (!state.calcExpr) return value || "0";
+    if (!state.calcOverwrite) return `${state.calcExpr}${value}`;
+    return state.calcExpr;
+  }
+
   function currentCalcExpression() {
     const expr = state.calcExpr || "";
     const value = String(state.calcValue ?? "");
-    const broken = value === "Error" || value.includes("오류") || value.includes("없음");
-    if (broken) return expr || "0";
+    if (isCalcErrorValue(value)) return expr || "0";
     if (!state.calcOverwrite) return expr + value;
     if (!expr) return value || "0";
-    if (/[+\-×÷*/]$/.test(expr)) return expr + value;
+    if (/[+\-×÷*/]$/.test(expr)) return expr.replace(/[+\-×÷*/]+$/, "") || value || "0";
     return expr;
   }
 
@@ -844,8 +857,16 @@
   }
 
   function renderCalc() {
-    els.calcExpr.textContent = state.calcExpr;
-    els.calcValue.textContent = state.calcValue;
+    if (!els.calcExpr || !els.calcValue) return;
+    const value = String(state.calcValue ?? "0");
+    const composing = Boolean(state.calcExpr) || !state.calcOverwrite;
+    if (composing && !isCalcErrorValue(value)) {
+      els.calcExpr.textContent = "";
+      els.calcValue.textContent = liveCalcText();
+    } else {
+      els.calcExpr.textContent = lastCalcExpr;
+      els.calcValue.textContent = value;
+    }
   }
 
   function calcPendingExpr() {
@@ -879,6 +900,7 @@
       state.calcExpr = "";
       state.calcValue = "0";
       state.calcOverwrite = true;
+      lastCalcExpr = "";
     } else if (key === "C") {
       if (!state.calcOverwrite && state.calcValue.length > 1) {
         state.calcValue = state.calcValue.slice(0, -1);
@@ -896,10 +918,12 @@
       try {
         const expr = currentCalcExpression();
         const result = evalRPN(toRPN(tokenize(expr)));
+        lastCalcExpr = expr;
         state.calcExpr = "";
         state.calcValue = formatNumber(result);
         state.calcOverwrite = true;
       } catch (err) {
+        lastCalcExpr = liveCalcText();
         state.calcValue = err.message;
         state.calcOverwrite = true;
       }
