@@ -848,6 +848,31 @@
     els.calcValue.textContent = state.calcValue;
   }
 
+  function calcPendingExpr() {
+    if (!state.calcOverwrite) return `${state.calcExpr || ""}${state.calcValue || ""}`;
+    return state.calcExpr || "";
+  }
+
+  function unmatchedOpenParens(expr) {
+    let n = 0;
+    for (const ch of expr) {
+      if (ch === "(") n += 1;
+      else if (ch === ")" && n) n -= 1;
+    }
+    return n;
+  }
+
+  function canOpenParen() {
+    return !calcPendingExpr().includes("(");
+  }
+
+  function canCloseParen() {
+    const expr = calcPendingExpr();
+    if (unmatchedOpenParens(expr) !== 1) return false;
+    const inside = expr.slice(expr.lastIndexOf("(") + 1);
+    return /\d/.test(inside);
+  }
+
   function inputCalc(key) {
     const ops = new Set(["+", "-", "×", "÷"]);
     if (key === "AC") {
@@ -894,10 +919,12 @@
       }
       state.calcOverwrite = true;
     } else if (key === "(") {
+      if (!canOpenParen()) return renderCalc();
       if (!state.calcOverwrite) state.calcExpr += state.calcValue;
       state.calcExpr += "(";
       state.calcOverwrite = true;
     } else if (key === ")") {
+      if (!canCloseParen()) return renderCalc();
       if (!state.calcOverwrite) {
         state.calcExpr += `${state.calcValue})`;
       } else {
