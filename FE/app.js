@@ -165,12 +165,23 @@
     raw.examIndex = Number.isInteger(raw.examIndex)
       ? Math.min(Math.max(raw.examIndex, 0), SECTIONS.length - 1)
       : 0;
-    if (parsed.examMode !== true || Number(parsed.remainingMs) > 3 * 60 * 60 * 1000) {
+    raw.section = SECTIONS[raw.examIndex].id;
+    const limitMs = Math.max(1, Number(raw.sectionMinutes[raw.section]) || 15) * 60 * 1000;
+    const remaining = Number(raw.remainingMs);
+    if (parsed.examMode !== true || remaining > 3 * 60 * 60 * 1000) {
       raw.examIndex = 0;
       raw.section = SECTIONS[0].id;
       raw.remainingMs = Math.max(1, Number(raw.sectionMinutes[SECTIONS[0].id]) || 15) * 60 * 1000;
       raw.running = false;
       raw.lastTick = null;
+    } else if (!Number.isFinite(remaining) || remaining < 0) {
+      raw.remainingMs = limitMs;
+    } else if (remaining <= 0) {
+      const last = raw.examIndex >= SECTIONS.length - 1;
+      const spent = Number(raw.spentMs[raw.section] || 0);
+      raw.remainingMs = !last || spent <= 0 ? limitMs : 0;
+    } else {
+      raw.remainingMs = Math.min(remaining, limitMs);
     }
     return raw;
   }
@@ -291,10 +302,28 @@
   function examElapsedMs() {
     let n = 0;
     SECTIONS.forEach((s, i) => {
-      if (i < state.examIndex) n += Number((state.spentMs && state.spentMs[s.id]) || 0);
+      if (i < state.examIndex) n += sectionLimitMs(s.id);
       else if (i === state.examIndex) n += Math.max(0, sectionLimitMs(s.id) - state.remainingMs);
     });
     return n;
+  }
+
+  function isLastSection() {
+    return state.examIndex >= SECTIONS.length - 1;
+  }
+
+  function sectionHasStarted(id = state.section) {
+    const answers = Object.keys((state.answers && state.answers[id]) || {}).length;
+    const skips = Object.keys((state.skips && state.skips[id]) || {}).length;
+    const spent = Number(state.spentMs?.[id] || 0);
+    return answers > 0 || skips > 0 || spent > 0 || Number(state.qIndex) > 1;
+  }
+
+  function ensureSectionBudget() {
+    if (state.remainingMs > 0) return;
+    if (isLastSection() && sectionHasStarted()) return;
+    state.remainingMs = sectionLimitMs(state.section);
+    state.alarmTickMs = 0;
   }
 
   function renderTimer() {
@@ -370,14 +399,14 @@
   }
 
   function onSectionTimeUp() {
-    const next = state.examIndex + 1;
-    if (next >= SECTIONS.length) {
+    if (isLastSection()) {
       if (state.alarmOn) beep("finish");
       addTimeToCurrent();
       skipRestOfSection();
       bankCurrentSpent();
       state.running = false;
       state.remainingMs = 0;
+      state.alarmTickMs = 0;
       state.lastTick = null;
       stopClock();
       renderTimer();
@@ -396,10 +425,12 @@
     skipRestOfSection();
     bankCurrentSpent();
     const endedMin = Math.round(sectionLimitMs(state.section) / 60000);
+    const next = state.examIndex + 1;
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
     state.remainingMs = sectionLimitMs(SECTIONS[next].id);
+    state.alarmTickMs = 0;
     state.lastTick = Date.now();
     startQuestionClock();
     renderOMR();
@@ -413,28 +444,30 @@
   function tick() {
     if (!state.running) return;
     const now = Date.now();
-    const dt = now - (state.lastTick || now);
-    state.remainingMs = Math.max(0, state.remainingMs - dt);
-    if (state.alarmOn) {
-      state.alarmTickMs = (state.alarmTickMs || 0) + dt;
-      const every = Math.max(1, Number(state.alarmEveryMin) || 15) * 60 * 1000;
-      if (state.alarmTickMs >= every) {
-        beep("section");
-        state.alarmTickMs %= every;
-      }
-    }
+    let dt = Math.max(0, now - (state.lastTick || now));
     state.lastTick = now;
-    renderTimer();
-    if (state.remainingMs <= 0) {
-      if (state.examMode) {
-        onSectionTimeUp();
+    ensureSectionBudget();
+    let steps = 0;
+    while (dt > 0 && state.running && steps < SECTIONS.length) {
+      steps += 1;
+      if (state.remainingMs > dt) {
+        if (state.alarmOn) {
+          state.alarmTickMs = (state.alarmTickMs || 0) + dt;
+          const every = Math.max(1, Number(state.alarmEveryMin) || 15) * 60 * 1000;
+          if (state.alarmTickMs >= every) {
+            beep("section");
+            state.alarmTickMs %= every;
+          }
+        }
+        state.remainingMs -= dt;
+        dt = 0;
       } else {
-        state.running = false;
-        stopClock();
-        persist();
-        if (state.alarmOn) beep("section");
+        dt -= state.remainingMs;
+        state.remainingMs = 0;
+        onSectionTimeUp();
       }
     }
+    renderTimer();
   }
 
   function startClock() {
@@ -1647,15 +1680,18 @@
     const status = recordStatus(rec);
     if (status === "in-progress") {
       if (progress) {
-        state.section = progress.section || SECTIONS[0].id;
-        const idx = SECTIONS.findIndex((s) => s.id === state.section);
+        const idx = SECTIONS.findIndex((s) => s.id === (progress.section || SECTIONS[0].id));
         state.examIndex = Number.isInteger(progress.examIndex)
-          ? progress.examIndex
+          ? Math.min(Math.max(progress.examIndex, 0), SECTIONS.length - 1)
           : idx >= 0
             ? idx
             : 0;
+        state.section = SECTIONS[state.examIndex].id;
         state.qIndex = Math.min(Math.max(Number(progress.qIndex) || 1, 1), SECTION_SIZE + 1);
-        state.remainingMs = Math.max(0, Number(progress.remainingMs) || sectionLimitMs(state.section));
+        const loadedRemaining = Number(progress.remainingMs);
+        state.remainingMs = Number.isFinite(loadedRemaining) && loadedRemaining > 0
+          ? loadedRemaining
+          : sectionLimitMs(state.section);
         state.spentMs = { ...emptySpent(), ...(progress.spentMs || {}) };
       }
       state.reviewMode = false;
@@ -1857,6 +1893,7 @@
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
     state.remainingMs = sectionLimitMs(SECTIONS[next].id);
+    state.alarmTickMs = 0;
     state.lastTick = Date.now();
     startQuestionClock();
     renderOMR();
@@ -2026,7 +2063,8 @@
       if (state.reviewMode) {
         state.reviewMode = false;
       }
-      if (state.remainingMs <= 0 && state.examIndex >= SECTIONS.length - 1) armExam(true);
+      if (state.remainingMs <= 0 && isLastSection() && sectionHasStarted()) armExam(true);
+      else ensureSectionBudget();
       allowAlarms();
       state.running = true;
       state.lastTick = Date.now();
