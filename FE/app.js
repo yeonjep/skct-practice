@@ -541,21 +541,13 @@
         } else {
           dt -= state.breakRemainingMs;
           state.breakRemainingMs = 0;
-          if (state.alarmOn) beep("start");
+          if (state.alarmOn) beep("begin");
           beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
         }
         continue;
       }
       ensureSectionBudget();
       if (state.remainingMs > dt) {
-        if (state.alarmOn) {
-          state.alarmTickMs = (state.alarmTickMs || 0) + dt;
-          const every = Math.max(1, Number(state.alarmEveryMin) || 15) * 60 * 1000;
-          if (state.alarmTickMs >= every) {
-            beep("section");
-            state.alarmTickMs %= every;
-          }
-        }
         state.remainingMs -= dt;
         dt = 0;
       } else {
@@ -621,6 +613,12 @@
       const t = ctx.currentTime;
       if (kind === "start") {
         tone(ctx, 740, t, 0.12, 0.12);
+        return;
+      }
+      if (kind === "begin") {
+        tone(ctx, 660, t, 0.28);
+        tone(ctx, 880, t + 0.38, 0.28);
+        tone(ctx, 880, t + 0.76, 0.45);
         return;
       }
       if (kind === "finish") {
@@ -1987,6 +1985,7 @@
     if (state.reviewMode) return;
     if (state.onBreak) {
       if (state.running) state.lastTick = Date.now();
+      if (state.alarmOn) beep("begin");
       beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
       return;
     }
@@ -2161,7 +2160,6 @@
       ).join("");
     }
     if ($("#settings-alarm-on")) $("#settings-alarm-on").checked = state.alarmOn !== false;
-    if ($("#settings-alarm-min")) $("#settings-alarm-min").value = String(state.alarmEveryMin || 15);
     if ($("#settings-break-min")) $("#settings-break-min").value = String(state.breakMin || 0);
     if ($("#settings-break-sec")) $("#settings-break-sec").value = String(state.breakSec ?? 30);
   }
@@ -2171,7 +2169,6 @@
       state.sectionMinutes[inp.dataset.section] = Math.max(1, Number(inp.value) || 15);
     });
     state.alarmOn = Boolean($("#settings-alarm-on") && $("#settings-alarm-on").checked);
-    state.alarmEveryMin = Math.max(1, Number($("#settings-alarm-min") && $("#settings-alarm-min").value) || 15);
     state.breakMin = Math.min(10, Math.max(0, Math.floor(Number($("#settings-break-min") && $("#settings-break-min").value) || 0)));
     state.breakSec = Math.min(59, Math.max(0, Math.floor(Number($("#settings-break-sec") && $("#settings-break-sec").value) || 0)));
     if (!startedExam()) state.remainingMs = sectionLimitMs();
