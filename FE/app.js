@@ -48,6 +48,10 @@
     alarmOn: true,
     alarmEveryMin: 15,
     alarmTickMs: 0,
+    breakMin: 0,
+    breakSec: 30,
+    onBreak: false,
+    breakRemainingMs: 0,
     sound: true,
     hideHelp: false,
     calcExpr: "",
@@ -156,6 +160,12 @@
     raw.alarmOn = raw.alarmOn !== false;
     raw.alarmEveryMin = Math.max(1, Number(raw.alarmEveryMin) || 15);
     raw.alarmTickMs = Number(raw.alarmTickMs) || 0;
+    raw.breakMin = Math.min(10, Math.max(0, Math.floor(Number(raw.breakMin) || 0)));
+    raw.breakSec = Math.min(59, Math.max(0, Math.floor(Number(raw.breakSec) || 0)));
+    if (!("breakMin" in parsed) && !("breakSec" in parsed)) {
+      raw.breakMin = 0;
+      raw.breakSec = 30;
+    }
     raw.qIndex = Math.min(Math.max(Number(raw.qIndex) || 1, 1), SECTION_SIZE + 1);
     raw.qStartedAt = null;
     raw.reviewMode = Boolean(raw.reviewMode);
@@ -166,6 +176,8 @@
       ? Math.min(Math.max(raw.examIndex, 0), SECTIONS.length - 1)
       : 0;
     raw.section = SECTIONS[raw.examIndex].id;
+    raw.onBreak = Boolean(raw.onBreak) && raw.examIndex < SECTIONS.length - 1;
+    raw.breakRemainingMs = raw.onBreak ? Math.max(0, Number(raw.breakRemainingMs) || 0) : 0;
     const limitMs = Math.max(1, Number(raw.sectionMinutes[raw.section]) || 15) * 60 * 1000;
     const remaining = Number(raw.remainingMs);
     if (parsed.examMode !== true || remaining > 3 * 60 * 60 * 1000) {
@@ -174,6 +186,13 @@
       raw.remainingMs = Math.max(1, Number(raw.sectionMinutes[SECTIONS[0].id]) || 15) * 60 * 1000;
       raw.running = false;
       raw.lastTick = null;
+      raw.onBreak = false;
+      raw.breakRemainingMs = 0;
+    } else if (raw.onBreak) {
+      raw.remainingMs = 0;
+      if (raw.breakRemainingMs <= 0) {
+        raw.breakRemainingMs = Math.max(0, raw.breakMin * 60 + raw.breakSec) * 1000;
+      }
     } else if (!Number.isFinite(remaining) || remaining < 0) {
       raw.remainingMs = limitMs;
     } else if (remaining <= 0) {
@@ -303,9 +322,28 @@
     let n = 0;
     SECTIONS.forEach((s, i) => {
       if (i < state.examIndex) n += sectionLimitMs(s.id);
-      else if (i === state.examIndex) n += Math.max(0, sectionLimitMs(s.id) - state.remainingMs);
+      else if (i === state.examIndex) {
+        n += state.onBreak
+          ? sectionLimitMs(s.id)
+          : Math.max(0, sectionLimitMs(s.id) - state.remainingMs);
+      }
     });
     return n;
+  }
+
+  function breakLimitMs() {
+    const min = Math.min(10, Math.max(0, Math.floor(Number(state.breakMin) || 0)));
+    const sec = Math.min(59, Math.max(0, Math.floor(Number(state.breakSec) || 0)));
+    return (min * 60 + sec) * 1000;
+  }
+
+  function formatBreakLabel(ms) {
+    const total = Math.max(0, Math.round(ms / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    if (m && s) return `${m}분 ${s}초`;
+    if (m) return `${m}분`;
+    return `${s}초`;
   }
 
   function isLastSection() {
@@ -320,6 +358,7 @@
   }
 
   function ensureSectionBudget() {
+    if (state.onBreak) return;
     if (state.remainingMs > 0) return;
     if (isLastSection() && sectionHasStarted()) return;
     state.remainingMs = sectionLimitMs(state.section);
@@ -328,11 +367,18 @@
 
   function renderTimer() {
     const idx = Math.min(state.examIndex, SECTIONS.length - 1);
-    const name = SECTIONS[idx].name;
-    els.timerNow.textContent = formatClock(state.remainingMs);
-    els.timerTotal.textContent = `/ ${Math.round(sectionLimitMs() / 60000)}분`;
-    if (els.examSubject) els.examSubject.textContent = name;
-    if (els.examStep) els.examStep.textContent = `${idx + 1} / 5`;
+    const next = SECTIONS[idx + 1];
+    if (state.onBreak) {
+      els.timerNow.textContent = formatClock(state.breakRemainingMs);
+      els.timerTotal.textContent = `/ ${formatBreakLabel(breakLimitMs() || state.breakRemainingMs)}`;
+      if (els.examSubject) els.examSubject.textContent = "쉬는 시간";
+      if (els.examStep) els.examStep.textContent = next ? `${idx + 1} → ${idx + 2}` : `${idx + 1} / 5`;
+    } else {
+      els.timerNow.textContent = formatClock(state.remainingMs);
+      els.timerTotal.textContent = `/ ${Math.round(sectionLimitMs() / 60000)}분`;
+      if (els.examSubject) els.examSubject.textContent = SECTIONS[idx].name;
+      if (els.examStep) els.examStep.textContent = `${idx + 1} / 5`;
+    }
     if (els.examOverall) {
       els.examOverall.textContent = `전체 ${formatTime(examElapsedMs())} / ${formatTime(totalLimitMs())}`;
     }
@@ -345,13 +391,23 @@
       els.timerPause.hidden = !startedExam();
       els.timerPause.textContent = state.running ? "일시정지" : "계속";
     }
+    if (els.skipSectionBtn) {
+      els.skipSectionBtn.textContent = state.onBreak ? "쉬는 시간 건너뛰기 ▶" : "영역 건너뛰기 ▶";
+    }
     if (els.timerReady) els.timerReady.hidden = state.running || startedExam();
-    els.timerFace.classList.toggle("is-warn", state.remainingMs <= 60_000 && state.remainingMs > 0);
-    els.timerFace.classList.toggle("is-over", state.remainingMs <= 0);
+    els.timerFace.classList.toggle("is-break", Boolean(state.onBreak));
+    els.timerFace.classList.toggle("is-warn", !state.onBreak && state.remainingMs <= 60_000 && state.remainingMs > 0);
+    els.timerFace.classList.toggle("is-over", !state.onBreak && state.remainingMs <= 0);
   }
 
   function startedExam() {
-    return state.running || state.examIndex > 0 || Number(state.qIndex) > 1 || examElapsedMs() > 0;
+    return (
+      state.running ||
+      state.onBreak ||
+      state.examIndex > 0 ||
+      Number(state.qIndex) > 1 ||
+      examElapsedMs() > 0
+    );
   }
 
   function armExam(fromStart = true) {
@@ -362,12 +418,16 @@
       state.section = SECTIONS[0].id;
       state.spentMs = emptySpent();
       state.alarmTickMs = 0;
+      state.onBreak = false;
+      state.breakRemainingMs = 0;
     } else {
       const idx = SECTIONS.findIndex((s) => s.id === state.section);
       state.examIndex = idx >= 0 ? idx : 0;
       state.section = SECTIONS[state.examIndex].id;
     }
     state.remainingMs = sectionLimitMs(state.section);
+    state.onBreak = false;
+    state.breakRemainingMs = 0;
     state.running = false;
     state.lastTick = null;
     if (fromStart) {
@@ -407,6 +467,8 @@
       state.running = false;
       state.remainingMs = 0;
       state.alarmTickMs = 0;
+      state.onBreak = false;
+      state.breakRemainingMs = 0;
       state.lastTick = null;
       stopClock();
       renderTimer();
@@ -425,7 +487,30 @@
     skipRestOfSection();
     bankCurrentSpent();
     const endedMin = Math.round(sectionLimitMs(state.section) / 60000);
+    const restMs = breakLimitMs();
+    if (restMs > 0) {
+      state.onBreak = true;
+      state.breakRemainingMs = restMs;
+      state.remainingMs = 0;
+      state.alarmTickMs = 0;
+      state.lastTick = Date.now();
+      state.qStartedAt = null;
+      renderOMR();
+      renderTimer();
+      persist();
+      const nextName = SECTIONS[state.examIndex + 1].name;
+      document.title = `쉬는 시간 · SKCT 연습창`;
+      showToast(`${endedMin}분 종료. ${formatBreakLabel(restMs)} 쉬는 시간 뒤 ${nextName}`);
+      return;
+    }
+    beginNextSection(`${endedMin}분 종료. ${SECTIONS[state.examIndex + 1].name}으로 넘어갑니다.`);
+  }
+
+  function beginNextSection(toastText) {
     const next = state.examIndex + 1;
+    if (next >= SECTIONS.length) return;
+    state.onBreak = false;
+    state.breakRemainingMs = 0;
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
@@ -438,7 +523,7 @@
     persist();
     const name = SECTIONS[next].name;
     document.title = `${name} · SKCT 연습창`;
-    showToast(`${endedMin}분 종료. ${name}으로 넘어갑니다.`);
+    showToast(toastText || `${name}을 시작합니다.`);
   }
 
   function tick() {
@@ -446,10 +531,22 @@
     const now = Date.now();
     let dt = Math.max(0, now - (state.lastTick || now));
     state.lastTick = now;
-    ensureSectionBudget();
     let steps = 0;
-    while (dt > 0 && state.running && steps < SECTIONS.length) {
+    while (dt > 0 && state.running && steps < SECTIONS.length * 2) {
       steps += 1;
+      if (state.onBreak) {
+        if (state.breakRemainingMs > dt) {
+          state.breakRemainingMs -= dt;
+          dt = 0;
+        } else {
+          dt -= state.breakRemainingMs;
+          state.breakRemainingMs = 0;
+          if (state.alarmOn) beep("start");
+          beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
+        }
+        continue;
+      }
+      ensureSectionBudget();
       if (state.remainingMs > dt) {
         if (state.alarmOn) {
           state.alarmTickMs = (state.alarmTickMs || 0) + dt;
@@ -1513,9 +1610,14 @@
   }
 
   function examProgressSnapshot() {
-    const remaining = state.running
-      ? Math.max(0, state.remainingMs - (Date.now() - (state.lastTick || Date.now())))
-      : state.remainingMs;
+    const remaining = state.onBreak
+      ? 0
+      : state.running
+        ? Math.max(0, state.remainingMs - (Date.now() - (state.lastTick || Date.now())))
+        : state.remainingMs;
+    const breakRemaining = state.onBreak && state.running
+      ? Math.max(0, state.breakRemainingMs - (Date.now() - (state.lastTick || Date.now())))
+      : state.breakRemainingMs;
     return {
       section: state.section,
       qIndex: Number(state.qIndex) || 1,
@@ -1523,6 +1625,8 @@
       remainingMs: Number.isFinite(remaining) ? remaining : sectionLimitMs(state.section),
       spentMs: { ...emptySpent(), ...(state.spentMs || {}) },
       reviewMode: Boolean(state.reviewMode),
+      onBreak: Boolean(state.onBreak),
+      breakRemainingMs: Number.isFinite(breakRemaining) ? breakRemaining : 0,
     };
   }
 
@@ -1693,6 +1797,11 @@
           ? loadedRemaining
           : sectionLimitMs(state.section);
         state.spentMs = { ...emptySpent(), ...(progress.spentMs || {}) };
+        state.onBreak = Boolean(progress.onBreak) && state.examIndex < SECTIONS.length - 1;
+        state.breakRemainingMs = state.onBreak
+          ? Math.max(0, Number(progress.breakRemainingMs) || breakLimitMs())
+          : 0;
+        if (state.onBreak) state.remainingMs = 0;
       }
       state.reviewMode = false;
       state.running = false;
@@ -1854,7 +1963,7 @@
   }
 
   function goToQuestion(skip) {
-    if (state.reviewMode) return;
+    if (state.reviewMode || state.onBreak) return;
     ensureExamRunning();
     const q = Number(state.qIndex);
     if (q < 1 || q > SECTION_SIZE) return;
@@ -1876,12 +1985,19 @@
 
   function skipWholeSection() {
     if (state.reviewMode) return;
+    if (state.onBreak) {
+      if (state.running) state.lastTick = Date.now();
+      beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
+      return;
+    }
     addTimeToCurrent();
     skipRestOfSection();
     bankCurrentSpent();
     const next = state.examIndex + 1;
     if (next >= SECTIONS.length) {
       state.running = false;
+      state.onBreak = false;
+      state.breakRemainingMs = 0;
       stopClock();
       renderOMR();
       renderTimer();
@@ -1889,6 +2005,8 @@
       openGradeModal(true);
       return;
     }
+    state.onBreak = false;
+    state.breakRemainingMs = 0;
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
@@ -2044,6 +2162,8 @@
     }
     if ($("#settings-alarm-on")) $("#settings-alarm-on").checked = state.alarmOn !== false;
     if ($("#settings-alarm-min")) $("#settings-alarm-min").value = String(state.alarmEveryMin || 15);
+    if ($("#settings-break-min")) $("#settings-break-min").value = String(state.breakMin || 0);
+    if ($("#settings-break-sec")) $("#settings-break-sec").value = String(state.breakSec ?? 30);
   }
 
   function saveSettings() {
@@ -2052,6 +2172,8 @@
     });
     state.alarmOn = Boolean($("#settings-alarm-on") && $("#settings-alarm-on").checked);
     state.alarmEveryMin = Math.max(1, Number($("#settings-alarm-min") && $("#settings-alarm-min").value) || 15);
+    state.breakMin = Math.min(10, Math.max(0, Math.floor(Number($("#settings-break-min") && $("#settings-break-min").value) || 0)));
+    state.breakSec = Math.min(59, Math.max(0, Math.floor(Number($("#settings-break-sec") && $("#settings-break-sec").value) || 0)));
     if (!startedExam()) state.remainingMs = sectionLimitMs();
     renderTimer();
     persist();
@@ -2063,8 +2185,13 @@
       if (state.reviewMode) {
         state.reviewMode = false;
       }
-      if (state.remainingMs <= 0 && isLastSection() && sectionHasStarted()) armExam(true);
-      else ensureSectionBudget();
+      if (state.onBreak) {
+        if (state.breakRemainingMs <= 0) state.breakRemainingMs = breakLimitMs();
+      } else if (state.remainingMs <= 0 && isLastSection() && sectionHasStarted()) {
+        armExam(true);
+      } else {
+        ensureSectionBudget();
+      }
       allowAlarms();
       state.running = true;
       state.lastTick = Date.now();
@@ -2103,6 +2230,8 @@
       stopClock();
       addTimeToCurrent();
       state.running = false;
+      state.onBreak = false;
+      state.breakRemainingMs = 0;
       state.lastTick = null;
       renderTimer();
       persist();
@@ -2398,7 +2527,7 @@
     if (helpBody) {
       helpBody.innerHTML = `<ol>
         <li><strong>진행</strong> 지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 갑니다.</li>
-        <li><strong>타이머</strong> 과목당 15분, 총 75분. 시간이 끝나면 남은 문항은 스킵하고 다음 과목으로 갑니다.</li>
+        <li><strong>타이머</strong> 과목당 15분, 총 75분. 과목 사이 쉬는 시간은 설정에서 분·초로 정합니다. 쉬는 시간은 75분에 넣지 않습니다.</li>
         <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다. 엑셀(CSV)로 저장하거나 같은 파일에 회차를 이어 붙입니다.</li>
         <li><strong>기록</strong> 채점 전이어도 지금 답안을 저장할 수 있습니다. 기록에서 회차를 누르면 이어서 풉니다.</li>
         <li><strong>계산기 / 메모</strong> 오른쪽에서 계산하고 메모·그림을 남깁니다. 구글 로그인하면 회차가 계정에 남습니다.</li>

@@ -148,6 +148,10 @@ input {
   color: #fda4af;
 }
 
+.timer-face.is-break .timer-now {
+  color: #93c5fd;
+}
+
 .timer-actions {
   display: flex;
   align-items: center;
@@ -573,11 +577,31 @@ input {
 }
 
 .settings-times input,
+.settings-break input,
 #settings-alarm-min {
   width: 72px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 8px;
+}
+
+.settings-break {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.settings-break label {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.settings-break input {
+  width: 100%;
 }
 
 .settings-alarm {
