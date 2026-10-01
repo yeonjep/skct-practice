@@ -306,13 +306,19 @@ input {
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .topbar .icon-btn#omr-toggle,
 .topbar .icon-btn#records-btn,
 .topbar .icon-btn#settings-btn,
 .topbar .icon-btn#login-btn,
-.topbar .icon-btn#logout-btn {
+.topbar .icon-btn#logout-btn,
+.topbar .icon-btn#mode-btn {
   width: auto;
   padding: 0 10px;
   font-size: 12px;
