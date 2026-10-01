@@ -79,6 +79,103 @@ input {
   opacity: 0.72;
 }
 
+.app.is-gate .workspace,
+.app.is-gate #settings-btn,
+.app.is-gate #help-btn,
+.app.is-gate #mode-btn {
+  display: none;
+}
+
+.app:not(.is-gate) .gate {
+  display: none;
+}
+
+.app:not(.is-gate) #mode-btn {
+  display: inline-flex;
+}
+
+.gate {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, rgba(225, 29, 72, 0.12), transparent 55%),
+    linear-gradient(180deg, #edf2f7 0%, var(--bg) 100%);
+}
+
+.gate-inner {
+  width: min(720px, 100%);
+  text-align: center;
+}
+
+.gate-kicker {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.gate-inner h1 {
+  margin: 0 0 28px;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.gate-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.gate-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  padding: 22px 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  color: inherit;
+}
+
+.gate-card:hover {
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+}
+
+.gate-card strong {
+  font-size: 20px;
+}
+
+.gate-card span {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.gate-card.is-exam {
+  background: linear-gradient(180deg, #1e3256 0%, #15233d 100%);
+  color: #fff;
+  border-color: transparent;
+}
+
+.gate-card.is-exam span {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+@media (max-width: 640px) {
+  .gate-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .timer-block {
   display: flex;
   align-items: center;
@@ -517,6 +614,18 @@ input {
 
 .omr-row.is-wrong {
   background: #fef2f2;
+}
+
+.omr-row.is-pickable {
+  cursor: pointer;
+}
+
+.omr-row.is-pickable:hover {
+  background: #f8fafc;
+}
+
+.omr-row.is-marked .omr-num {
+  color: var(--accent);
 }
 
 .omr-num {
@@ -1151,6 +1260,16 @@ input {
 .record-tag.is-graded {
   background: #f1f5f9;
   color: #475569;
+}
+
+.record-tag.is-practice {
+  background: #fce7f3;
+  color: #9d174d;
+}
+
+.record-tag.is-exam {
+  background: #e0e7ff;
+  color: #3730a3;
 }
 
 .records-list {

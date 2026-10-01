@@ -66,6 +66,8 @@
 
   let state = defaultState();
   let deskOwnerId = undefined;
+  let playMode = null;
+  let helpShownThisVisit = false;
   let lastCalcExpr = "";
   let calcCaret = 0;
   let recordSaveBusy = false;
@@ -77,6 +79,8 @@
   let clock = null;
 
   const els = {
+    app: $("#app"),
+    gate: $("#gate"),
     workspace: $(".workspace"),
     omrPanel: $("#omr-panel"),
     omrList: $("#omr-list"),
@@ -128,14 +132,31 @@
     userChip: $("#user-chip"),
     userPhoto: $("#user-photo"),
     userName: $("#user-name"),
+    brandSub: $("#brand-sub"),
+    examLabel: $("#exam-label"),
+    modeBtn: $("#mode-btn"),
   };
 
   let currentUser = null;
   let cloudRecords = [];
   let lastGrade = null;
 
-  function deskStorageKey(ownerId) {
-    return ownerId ? `${STORAGE_KEY}:u:${ownerId}` : `${STORAGE_KEY}:guest`;
+  function isPractice() {
+    return playMode === "practice";
+  }
+
+  function isExam() {
+    return playMode === "exam";
+  }
+
+  function modeFromHash() {
+    const h = (location.hash || "").replace(/^#/, "");
+    return h === "practice" || h === "exam" ? h : null;
+  }
+
+  function deskStorageKey(ownerId, kind = playMode) {
+    const base = ownerId ? `${STORAGE_KEY}:u:${ownerId}` : `${STORAGE_KEY}:guest`;
+    return kind ? `${base}:${kind}` : base;
   }
 
   function recordsStorageKey(ownerId) {
@@ -245,7 +266,7 @@
   }
 
   function persist() {
-    if (deskOwnerId === undefined) return;
+    if (deskOwnerId === undefined || !playMode) return;
     const snapshot = {
       ...state,
       running: false,
@@ -358,7 +379,7 @@
   }
 
   function ensureSectionBudget() {
-    if (state.onBreak) return;
+    if (state.onBreak || isPractice()) return;
     if (state.remainingMs > 0) return;
     if (isLastSection() && sectionHasStarted()) return;
     state.remainingMs = sectionLimitMs(state.section);
@@ -379,19 +400,21 @@
       if (els.examSubject) els.examSubject.textContent = SECTIONS[idx].name;
       if (els.examStep) els.examStep.textContent = `${idx + 1} / 5`;
     }
+    if (els.examLabel) els.examLabel.textContent = isPractice() ? "연습 모드" : "실전 5과목";
     if (els.examOverall) {
       els.examOverall.textContent = `전체 ${formatTime(examElapsedMs())} / ${formatTime(totalLimitMs())}`;
     }
     if (els.alarmOn) els.alarmOn.checked = state.alarmOn !== false;
     if (els.timerToggle) {
       els.timerToggle.hidden = startedExam();
-      els.timerToggle.textContent = "연습 시작";
+      els.timerToggle.textContent = isPractice() ? "연습 시작" : "실전 시작";
     }
     if (els.timerPause) {
       els.timerPause.hidden = !startedExam();
       els.timerPause.textContent = state.running ? "일시정지" : "계속";
     }
     if (els.skipSectionBtn) {
+      els.skipSectionBtn.hidden = isPractice();
       els.skipSectionBtn.textContent = state.onBreak ? "쉬는 시간 건너뛰기 ▶" : "영역 건너뛰기 ▶";
     }
     if (els.timerReady) els.timerReady.hidden = state.running || startedExam();
@@ -462,7 +485,7 @@
     if (isLastSection()) {
       if (state.alarmOn) beep("finish");
       addTimeToCurrent();
-      skipRestOfSection();
+      if (!isPractice()) skipRestOfSection();
       bankCurrentSpent();
       state.running = false;
       state.remainingMs = 0;
@@ -484,7 +507,7 @@
     }
     if (state.sound && state.alarmOn) beep("section");
     addTimeToCurrent();
-    skipRestOfSection();
+    if (!isPractice()) skipRestOfSection();
     bankCurrentSpent();
     const endedMin = Math.round(sectionLimitMs(state.section) / 60000);
     const restMs = breakLimitMs();
@@ -657,8 +680,8 @@
       btn.className = "omr-sec";
       btn.dataset.section = sec.id;
       if (sec.id === state.section) btn.classList.add("is-active");
-      if (!state.reviewMode && idx < state.examIndex) btn.classList.add("is-done");
-      if (!state.reviewMode && idx > state.examIndex) btn.classList.add("is-locked");
+      if (!state.reviewMode && !isPractice() && idx < state.examIndex) btn.classList.add("is-done");
+      if (!state.reviewMode && !isPractice() && idx > state.examIndex) btn.classList.add("is-locked");
       const filled = Object.values(state.answers[sec.id] || {}).filter(Boolean).length;
       btn.title = sec.name;
       btn.innerHTML = `<span>${sec.short || sec.name}</span><em>${filled}/20</em>`;
@@ -673,6 +696,7 @@
       els.omrToggle.textContent = state.omrOpen ? "OMR숨김" : "OMR";
     }
     renderSectionButtons();
+    const practice = isPractice();
     const answers = sectionAnswers();
     const qNow = Number(state.qIndex) || 1;
     const frag = document.createDocumentFragment();
@@ -681,11 +705,12 @@
       row.className = "omr-row";
       row.dataset.q = String(i);
       const isActive = !state.reviewMode && i === qNow && qNow <= SECTION_SIZE;
-      const isPast = state.reviewMode || i < qNow;
-      const isFuture = !state.reviewMode && i > qNow;
+      const isFuture = !practice && !state.reviewMode && i > qNow;
       if (isActive) row.classList.add("is-active");
-      if (!state.reviewMode && i < qNow) row.classList.add("is-done");
+      if (!practice && !state.reviewMode && i < qNow) row.classList.add("is-done");
       if (isFuture) row.classList.add("is-locked");
+      if (practice && !state.reviewMode) row.classList.add("is-pickable");
+      if (Number(answers[i])) row.classList.add("is-marked");
       const num = document.createElement("div");
       num.className = "omr-num";
       num.textContent = String(i);
@@ -700,11 +725,11 @@
         btn.textContent = String(c);
         btn.dataset.choice = String(c);
         if (Number(answers[i]) === c) btn.classList.add("is-on");
-        if (!isActive && !state.reviewMode) btn.disabled = true;
+        if (!isActive && !state.reviewMode && !practice) btn.disabled = true;
         choices.appendChild(btn);
       }
       main.appendChild(choices);
-      if (isActive) {
+      if (isActive && !practice) {
         const nextBtn = document.createElement("button");
         nextBtn.type = "button";
         nextBtn.className = "omr-next";
@@ -725,9 +750,16 @@
     }
     els.omrList.replaceChildren(frag);
     if (els.answerProgress) {
-      const cap = Math.min(qNow, SECTION_SIZE);
-      els.answerProgress.textContent = `${currentSection().name} ${Math.min(qNow, SECTION_SIZE)}/${SECTION_SIZE}`;
-      if (qNow > SECTION_SIZE) els.answerProgress.textContent = `${currentSection().name} 완료`;
+      if (practice) {
+        const filled = Object.values(answers).filter(Boolean).length;
+        els.answerProgress.textContent = `${currentSection().name} ${filled}/${SECTION_SIZE}`;
+      } else {
+        const qNowShow = Number(state.qIndex) || 1;
+        els.answerProgress.textContent =
+          qNowShow > SECTION_SIZE
+            ? `${currentSection().name} 완료`
+            : `${currentSection().name} ${Math.min(qNowShow, SECTION_SIZE)}/${SECTION_SIZE}`;
+      }
     }
     const active = els.omrList.querySelector(".omr-row.is-active");
     if (active) active.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -1297,12 +1329,62 @@
   function adoptLegacyDesk(uid) {
     const legacy = localStorage.getItem(STORAGE_KEY);
     if (!legacy) return;
-    const scoped = deskStorageKey(uid);
+    const scoped = uid ? `${STORAGE_KEY}:u:${uid}` : `${STORAGE_KEY}:guest`;
     const last = localStorage.getItem(LAST_UID_KEY);
     if (!localStorage.getItem(scoped) && (!last || last === uid)) {
       localStorage.setItem(scoped, legacy);
     }
     localStorage.removeItem(STORAGE_KEY);
+  }
+
+  function migrateUnscopedDesk(ownerId) {
+    const unscoped = ownerId ? `${STORAGE_KEY}:u:${ownerId}` : `${STORAGE_KEY}:guest`;
+    const examKey = `${unscoped}:exam`;
+    try {
+      if (!localStorage.getItem(examKey)) {
+        const raw = localStorage.getItem(unscoped);
+        if (raw) localStorage.setItem(examKey, raw);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function applyModeChrome() {
+    const practice = isPractice();
+    if (els.app) els.app.classList.toggle("is-gate", !playMode);
+    if (els.brandSub) els.brandSub.textContent = playMode ? (practice ? "연습용" : "실전용") : "연습창";
+    document.title = playMode ? (practice ? "연습용 · SKCT 연습창" : "실전용 · SKCT 연습창") : "SKCT 연습창";
+  }
+
+  function maybeHelp() {
+    if (state.hideHelp || helpShownThisVisit) return;
+    helpShownThisVisit = true;
+    openModal(els.helpModal);
+  }
+
+  function enterMode(kind, opts = {}) {
+    if (kind !== "practice" && kind !== "exam") return;
+    if (playMode && playMode !== kind && deskOwnerId !== undefined) persist();
+    playMode = kind;
+    if (!opts.skipHash && location.hash !== `#${kind}`) {
+      location.hash = kind;
+    }
+    applyModeChrome();
+    if (deskOwnerId !== undefined) {
+      state = loadDesk(deskOwnerId);
+      applyDeskToUi();
+    }
+    fillStaticCopy();
+    if (!opts.skipHelp) maybeHelp();
+  }
+
+  function showGate() {
+    if (playMode && deskOwnerId !== undefined) persist();
+    playMode = null;
+    stopClock();
+    applyModeChrome();
+    if (location.hash) history.replaceState(null, "", `${location.pathname}${location.search}`);
   }
 
   function applyDeskToUi() {
@@ -1318,10 +1400,15 @@
     renderCalc();
     applyPaintStyle();
     setupPaint();
+    setMode("note");
     resetGradeForm();
     if (els.gradeModal && !els.gradeModal.hidden) closeModal(els.gradeModal);
     renderRecords();
-    document.title = "SKCT 연습창";
+    document.title = playMode
+      ? isPractice()
+        ? "연습용 · SKCT 연습창"
+        : "실전용 · SKCT 연습창"
+      : "SKCT 연습창";
   }
 
   function settleDesk(user) {
@@ -1338,8 +1425,11 @@
       localStorage.setItem(LAST_UID_KEY, user.uid);
     }
     deskOwnerId = nextId;
-    state = loadDesk(deskOwnerId);
-    applyDeskToUi();
+    migrateUnscopedDesk(deskOwnerId);
+    if (playMode) {
+      state = loadDesk(deskOwnerId);
+      applyDeskToUi();
+    }
     renderAuth();
     return true;
   }
@@ -1678,6 +1768,7 @@
         skips: state.skips || emptyCountMap(),
         score: currentScoreSnapshot(),
         progress,
+        playMode: playMode || "exam",
         status: progress.reviewMode ? "graded" : "in-progress",
       });
       state.recordId = record.id;
@@ -1731,6 +1822,11 @@
         const keyed = score.totalKeyed || 100;
         const marked = rec.score?.totalMarked ?? markedCountFor(rec.answers);
         const status = recordStatus(rec);
+        const kind = rec.playMode === "practice" ? "practice" : "exam";
+        const kindTag =
+          kind === "practice"
+            ? '<span class="record-tag is-practice">연습</span>'
+            : '<span class="record-tag is-exam">실전</span>';
         const tag =
           status === "in-progress"
             ? '<span class="record-tag is-resume">이어 풀기</span>'
@@ -1742,7 +1838,7 @@
         return `
           <div class="record-item" data-id="${rec.id}">
             <button type="button" class="record-open" data-id="${rec.id}">
-              <strong>${tag}${escapeHtml(rec.name)}</strong>
+              <strong>${kindTag}${tag}${escapeHtml(rec.name)}</strong>
               <span>${detail}</span>
             </button>
             <button type="button" class="record-del" data-id="${rec.id}">삭제</button>
@@ -1771,6 +1867,12 @@
   function applyRecord(id) {
     const rec = recordsForUi().find((r) => r.id === id);
     if (!rec) return;
+    const kind = rec.playMode === "practice" ? "practice" : "exam";
+    if (playMode && playMode !== kind && deskOwnerId !== undefined) persist();
+    playMode = kind;
+    applyModeChrome();
+    fillStaticCopy();
+    if (location.hash !== `#${kind}`) location.hash = kind;
     state.recordId = rec.id;
     state.answers = normalizeAnswers(rec.answers);
     state.answerKeys = { ...defaultState().answerKeys, ...(rec.answerKeys || {}) };
@@ -1810,7 +1912,7 @@
       renderOMR();
       renderTimer();
       closeModal(els.recordsModal);
-      showToast(`「${rec.name}」을 불러왔습니다. 연습 시작을 누르면 이어서 풉니다.`);
+      showToast(`「${rec.name}」을 불러왔습니다. ${isPractice() ? "연습 시작" : "실전 시작"}을 누르면 이어서 풉니다.`);
       return;
     }
     state.reviewMode = true;
@@ -2258,9 +2360,21 @@
       const btn = e.target.closest(".omr-sec");
       if (!btn) return;
       const idx = SECTIONS.findIndex((s) => s.id === btn.dataset.section);
-      if (!state.reviewMode && idx !== state.examIndex) return;
-      state.section = btn.dataset.section;
-      if (state.reviewMode) state.examIndex = idx;
+      if (idx < 0) return;
+      if (!state.reviewMode && !isPractice() && idx !== state.examIndex) return;
+      if (isPractice() && !state.reviewMode) {
+        addTimeToCurrent();
+        bankCurrentSpent();
+        state.examIndex = idx;
+        state.section = SECTIONS[idx].id;
+        state.remainingMs = Math.max(0, sectionLimitMs(state.section) - Number(state.spentMs[state.section] || 0));
+        if (state.qIndex < 1 || state.qIndex > SECTION_SIZE) state.qIndex = 1;
+        if (!state.onBreak) startQuestionClock();
+        renderTimer();
+      } else {
+        state.section = btn.dataset.section;
+        if (state.reviewMode) state.examIndex = idx;
+      }
       renderOMR();
       persist();
     });
@@ -2271,19 +2385,36 @@
         goToQuestion(act.dataset.act === "skip");
         return;
       }
+      const row = e.target.closest(".omr-row");
+      if (!row) return;
+      const q = Number(row.dataset.q);
+      if (isPractice() && !state.reviewMode && q >= 1 && q <= SECTION_SIZE) {
+        if (q !== Number(state.qIndex)) {
+          addTimeToCurrent();
+          state.qIndex = q;
+          if (state.running && !state.onBreak) startQuestionClock();
+        }
+      }
       const btn = e.target.closest(".omr-choice");
-      if (!btn || btn.disabled) return;
-      const row = btn.closest(".omr-row");
-      if (!row || (!state.reviewMode && !row.classList.contains("is-active"))) return;
-      const q = row.dataset.q;
+      if (!btn || btn.disabled) {
+        if (isPractice() && !state.reviewMode) {
+          renderOMR();
+          persist();
+        }
+        return;
+      }
+      if (!state.reviewMode && !isPractice() && !row.classList.contains("is-active")) return;
       const answers = sectionAnswers();
       const choice = Number(btn.dataset.choice);
       if (Number(answers[q]) === choice) delete answers[q];
       else answers[q] = choice;
+      if (state.skips[state.section]) delete state.skips[state.section][q];
       row.querySelectorAll(".omr-choice").forEach((c) => {
         c.classList.toggle("is-on", Number(c.dataset.choice) === Number(answers[q]));
       });
+      row.classList.toggle("is-marked", Boolean(answers[q]));
       updateFilled();
+      if (isPractice()) renderOMR();
       scheduleSave();
     });
     $("#grade-close").addEventListener("click", () => closeModal(els.gradeModal));
@@ -2513,19 +2644,45 @@
       state.paint = els.paint.toDataURL("image/png");
       setupPaint();
     });
+    if (els.modeBtn) {
+      els.modeBtn.addEventListener("click", () => showGate());
+    }
+    const enterPractice = $("#enter-practice");
+    const enterExam = $("#enter-exam");
+    if (enterPractice) enterPractice.addEventListener("click", () => enterMode("practice"));
+    if (enterExam) enterExam.addEventListener("click", () => enterMode("exam"));
+    window.addEventListener("hashchange", () => {
+      const mode = modeFromHash();
+      if (!mode) {
+        if (playMode) showGate();
+        return;
+      }
+      if (playMode === mode) return;
+      enterMode(mode);
+    });
     window.addEventListener("beforeunload", persist);
   }
 
   function fillStaticCopy() {
     if (els.timerReady) {
-      els.timerReady.textContent = "시작 후 문항마다 시간을 잽니다. 다음·스킵하면 뒤로 가지 못합니다.";
+      els.timerReady.textContent = isPractice()
+        ? "문항 번호를 눌러 자유롭게 오갈 수 있습니다. 이전 문제로 돌아갈 수 있습니다."
+        : "시작 후 문항마다 시간을 잽니다. 다음·스킵하면 뒤로 가지 못합니다.";
     }
     const helpBody = $("#help-body");
     if (helpBody) {
-      helpBody.innerHTML = `<ol>
-        <li><strong>진행</strong> 지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 갑니다.</li>
-        <li><strong>타이머</strong> 과목당 15분, 총 75분. 과목 사이 쉬는 시간은 설정에서 분·초로 정합니다. 쉬는 시간은 75분에 넣지 않습니다.</li>
-        <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다. 엑셀(CSV)로 저장하거나 같은 파일에 회차를 이어 붙입니다.</li>
+      helpBody.innerHTML = isPractice()
+        ? `<ol>
+        <li><strong>연습용</strong> 정답란의 아무 문항이나 고를 수 있고, 이전 문제로 돌아갈 수 있습니다.</li>
+        <li><strong>타이머</strong> 과목당 15분, 총 75분. 과목 탭을 눌러 영역을 바꿀 수 있습니다.</li>
+        <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률이 나옵니다.</li>
+        <li><strong>기록</strong> 채점 전이어도 지금 답안을 저장할 수 있습니다.</li>
+        <li><strong>계산기 / 메모</strong> 오른쪽에서 계산하고 메모·그림을 남깁니다.</li>
+      </ol>`
+        : `<ol>
+        <li><strong>실전용</strong> 지금 문항만 고릅니다. 다음·스킵을 누르면 다음으로 가고 뒤로 가지 못합니다.</li>
+        <li><strong>타이머</strong> 과목당 15분, 총 75분. 과목 사이 쉬는 시간은 설정에서 분·초로 정합니다.</li>
+        <li><strong>채점</strong> 정답 20개를 붙여 넣고 채점하면 과목별 정답률, 평균 소요, 스킵, 틀린 문항이 나옵니다.</li>
         <li><strong>기록</strong> 채점 전이어도 지금 답안을 저장할 수 있습니다. 기록에서 회차를 누르면 이어서 풉니다.</li>
         <li><strong>계산기 / 메모</strong> 오른쪽에서 계산하고 메모·그림을 남깁니다. 구글 로그인하면 회차가 계정에 남습니다.</li>
       </ol>`;
@@ -2559,14 +2716,10 @@
       console.warn(err);
     }
     bind();
-    els.notepad.value = state.note;
-    renderOMR();
-    renderTimer();
-    renderCalc();
-    applyPaintStyle();
-    setMode("note");
+    applyModeChrome();
     initFirebase();
-    if (!state.hideHelp) openModal(els.helpModal);
+    const mode = modeFromHash();
+    if (mode) enterMode(mode, { skipHash: true });
   }
 
   init();
