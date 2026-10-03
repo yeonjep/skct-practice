@@ -36,6 +36,8 @@
     omrOpen: true,
     note: "",
     paint: "",
+    paintW: 0,
+    paintH: 0,
     paintColor: "#111827",
     paintWidth: 3,
     eraser: false,
@@ -181,6 +183,8 @@
     raw.alarmOn = raw.alarmOn !== false;
     raw.alarmEveryMin = Math.max(1, Number(raw.alarmEveryMin) || 15);
     raw.alarmTickMs = Number(raw.alarmTickMs) || 0;
+    raw.paintW = Math.max(0, Number(raw.paintW) || 0);
+    raw.paintH = Math.max(0, Number(raw.paintH) || 0);
     raw.breakMin = Math.min(10, Math.max(0, Math.floor(Number(raw.breakMin) || 0)));
     raw.breakSec = Math.min(59, Math.max(0, Math.floor(Number(raw.breakSec) || 0)));
     if (!("breakMin" in parsed) && !("breakSec" in parsed)) {
@@ -276,6 +280,8 @@
         : state.remainingMs,
       answerKeys: defaultState().answerKeys,
       paint: els.paint.width ? els.paint.toDataURL("image/png") : state.paint,
+      paintW: els.paint.width ? paintCanvasCssSize().w : state.paintW,
+      paintH: els.paint.width ? paintCanvasCssSize().h : state.paintH,
     };
     try {
       localStorage.setItem(deskStorageKey(deskOwnerId), JSON.stringify(snapshot));
@@ -777,29 +783,77 @@
     renderSectionButtons();
   }
 
+  function paintDpr() {
+    return window.devicePixelRatio || 1;
+  }
+
+  function paintCanvasCssSize() {
+    const dpr = paintDpr();
+    return {
+      w: Math.max(1, Math.round(els.paint.width / dpr)),
+      h: Math.max(1, Math.round(els.paint.height / dpr)),
+    };
+  }
+
+  function rememberPaintSize(w, h) {
+    state.paintW = Math.max(0, Math.round(w));
+    state.paintH = Math.max(0, Math.round(h));
+  }
+
+  function savePaintSnapshot() {
+    if (!els.paint || !els.paint.width) return;
+    state.paint = els.paint.toDataURL("image/png");
+    const size = paintCanvasCssSize();
+    rememberPaintSize(size.w, size.h);
+  }
+
+  function blitPaint(img, srcW, srcH) {
+    if (!paintCtx || !img) return;
+    const dpr = paintDpr();
+    const dw = srcW || img.naturalWidth / dpr;
+    const dh = srcH || img.naturalHeight / dpr;
+    paintCtx.drawImage(img, 0, 0, dw, dh);
+  }
+
   function setupPaint() {
     const canvas = els.paint;
     const wrap = els.paintWrap;
-    const dpr = window.devicePixelRatio || 1;
+    if (!canvas || !wrap || wrap.hidden) return;
+    const dpr = paintDpr();
     const rect = wrap.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
 
-    const snapshot = state.paint;
-    canvas.width = Math.floor(rect.width * dpr);
-    canvas.height = Math.floor(rect.height * dpr);
-    paintCtx = canvas.getContext("2d");
-    paintCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    paintCtx.lineCap = "round";
-    paintCtx.lineJoin = "round";
-    paintCtx.fillStyle = "#ffffff";
-    paintCtx.fillRect(0, 0, rect.width, rect.height);
+    const mount = (srcW, srcH, img) => {
+      const cssW = Math.max(Math.ceil(rect.width), Math.round(srcW || 0));
+      const cssH = Math.max(Math.ceil(rect.height), Math.round(srcH || 0));
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      paintCtx = canvas.getContext("2d");
+      paintCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      paintCtx.lineCap = "round";
+      paintCtx.lineJoin = "round";
+      paintCtx.fillStyle = "#ffffff";
+      paintCtx.fillRect(0, 0, cssW, cssH);
+      if (img) blitPaint(img, srcW, srcH);
+      applyPaintStyle();
+    };
 
-    if (snapshot) {
-      const img = new Image();
-      img.onload = () => paintCtx.drawImage(img, 0, 0, rect.width, rect.height);
-      img.src = snapshot;
+    if (!state.paint) {
+      mount(0, 0, null);
+      return;
     }
-    applyPaintStyle();
+    const knownW = Number(state.paintW) || 0;
+    const knownH = Number(state.paintH) || 0;
+    const img = new Image();
+    img.onload = () => {
+      const w = knownW || img.naturalWidth / dpr;
+      const h = knownH || img.naturalHeight / dpr;
+      mount(w, h, img);
+    };
+    img.onerror = () => mount(knownW, knownH, null);
+    img.src = state.paint;
   }
 
   function applyPaintStyle() {
@@ -813,9 +867,13 @@
   }
 
   function pointFromEvent(e) {
-    const rect = els.paint.getBoundingClientRect();
+    const wrap = els.paintWrap;
+    const rect = wrap.getBoundingClientRect();
     const src = e.touches ? e.touches[0] : e;
-    return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+    return {
+      x: src.clientX - rect.left + wrap.scrollLeft,
+      y: src.clientY - rect.top + wrap.scrollTop,
+    };
   }
 
   function pushUndo() {
@@ -854,7 +912,7 @@
     if (!drawing) return;
     drawing = false;
     lastPoint = null;
-    state.paint = els.paint.toDataURL("image/png");
+    savePaintSnapshot();
     scheduleSave();
   }
 
@@ -2508,11 +2566,12 @@
       if (!prev) return;
       const img = new Image();
       img.onload = () => {
-        const rect = els.paintWrap.getBoundingClientRect();
+        const dpr = paintDpr();
+        const size = paintCanvasCssSize();
         paintCtx.fillStyle = "#fff";
-        paintCtx.fillRect(0, 0, rect.width, rect.height);
-        paintCtx.drawImage(img, 0, 0, rect.width, rect.height);
-        state.paint = els.paint.toDataURL("image/png");
+        paintCtx.fillRect(0, 0, size.w, size.h);
+        blitPaint(img, img.naturalWidth / dpr, img.naturalHeight / dpr);
+        savePaintSnapshot();
         scheduleSave();
       };
       img.src = prev;
@@ -2524,10 +2583,10 @@
         state.note = "";
       } else {
         pushUndo();
-        const rect = els.paintWrap.getBoundingClientRect();
-        paintCtx.fillStyle = "#fff";
-        paintCtx.fillRect(0, 0, rect.width, rect.height);
-        state.paint = els.paint.toDataURL("image/png");
+        state.paint = "";
+        state.paintW = 0;
+        state.paintH = 0;
+        setupPaint();
       }
       persist();
     });
@@ -2641,7 +2700,7 @@
 
     window.addEventListener("resize", () => {
       if (els.paintWrap.hidden || !paintCtx) return;
-      state.paint = els.paint.toDataURL("image/png");
+      if (els.paint.width) savePaintSnapshot();
       setupPaint();
     });
     if (els.modeBtn) {
