@@ -488,6 +488,7 @@
   }
 
   function onSectionTimeUp() {
+    closeHelpIfOpen();
     if (isLastSection()) {
       if (state.alarmOn) beep("finish");
       addTimeToCurrent();
@@ -536,6 +537,7 @@
   }
 
   function beginNextSection(toastText) {
+    closeHelpIfOpen();
     const next = state.examIndex + 1;
     if (next >= SECTIONS.length) return;
     state.onBreak = false;
@@ -1416,13 +1418,22 @@
   }
 
   function maybeHelp() {
-    if (state.hideHelp || helpShownThisVisit) return;
+    if (state.hideHelp || helpShownThisVisit || state.running || startedExam()) return;
     helpShownThisVisit = true;
     openModal(els.helpModal);
   }
 
+  function closeHelpIfOpen() {
+    if (els.helpModal && !els.helpModal.hidden) closeModal(els.helpModal);
+  }
+
   function enterMode(kind, opts = {}) {
     if (kind !== "practice" && kind !== "exam") return;
+    if (playMode === kind && !opts.force) {
+      applyModeChrome();
+      fillStaticCopy();
+      return;
+    }
     if (playMode && playMode !== kind && deskOwnerId !== undefined) persist();
     playMode = kind;
     if (!opts.skipHash && location.hash !== `#${kind}`) {
@@ -1476,6 +1487,7 @@
       renderAuth();
       return false;
     }
+    const keepLive = Boolean(playMode && (state.running || startedExam()));
     if (deskOwnerId !== undefined) persist();
     currentUser = user;
     if (user) {
@@ -1485,8 +1497,12 @@
     deskOwnerId = nextId;
     migrateUnscopedDesk(deskOwnerId);
     if (playMode) {
-      state = loadDesk(deskOwnerId);
-      applyDeskToUi();
+      if (keepLive) {
+        persist();
+      } else {
+        state = loadDesk(deskOwnerId);
+        applyDeskToUi();
+      }
     }
     renderAuth();
     return true;
@@ -2339,6 +2355,7 @@
 
   function bind() {
     els.timerToggle.addEventListener("click", () => {
+      closeHelpIfOpen();
       if (state.reviewMode) {
         state.reviewMode = false;
       }
@@ -2712,12 +2729,16 @@
     if (enterExam) enterExam.addEventListener("click", () => enterMode("exam"));
     window.addEventListener("hashchange", () => {
       const mode = modeFromHash();
-      if (!mode) {
-        if (playMode) showGate();
+      if (mode) {
+        if (playMode === mode) return;
+        enterMode(mode);
         return;
       }
-      if (playMode === mode) return;
-      enterMode(mode);
+      if (playMode && (state.running || startedExam())) {
+        history.replaceState(null, "", `${location.pathname}${location.search}#${playMode}`);
+        return;
+      }
+      if (playMode) showGate();
     });
     window.addEventListener("beforeunload", persist);
   }
