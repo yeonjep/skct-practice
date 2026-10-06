@@ -1230,6 +1230,7 @@
   }
 
   function inputCalc(key) {
+    if (key === "(" || key === ")") return;
     syncCalcFromField();
     if (key === "AC") {
       resetCalc(true);
@@ -2624,11 +2625,21 @@
     });
     if (els.calcValue && els.calcValue.tagName === "INPUT") {
       els.calcValue.addEventListener("input", () => {
+        const cleaned = els.calcValue.value.replace(/[()]/g, "");
+        if (cleaned !== els.calcValue.value) {
+          const caret = Math.max(0, (els.calcValue.selectionStart ?? cleaned.length) - 1);
+          els.calcValue.value = cleaned;
+          els.calcValue.setSelectionRange(caret, caret);
+        }
         state.calcExpr = els.calcValue.value;
         calcCaret = els.calcValue.selectionStart ?? els.calcValue.value.length;
         scheduleSave();
       });
       els.calcValue.addEventListener("keydown", (e) => {
+        if (e.key === "(" || e.key === ")") {
+          e.preventDefault();
+          return;
+        }
         if (e.key === "Enter") {
           e.preventDefault();
           inputCalc("=");
@@ -2678,8 +2689,6 @@
         "*": "×",
         "/": "÷",
         "%": "%",
-        "(": "(",
-        ")": ")",
         ".": ".",
       };
       if (map[e.key]) {

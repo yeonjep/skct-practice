@@ -965,7 +965,7 @@ input {
 .calc-keys {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: 30px 30px repeat(4, minmax(22px, 1fr));
+  grid-template-rows: 30px repeat(4, minmax(22px, 1fr));
   gap: 3px;
   padding: 4px;
   background: #f4f7fb;
@@ -997,11 +997,6 @@ input {
 .calc-keys .op {
   background: #ffe4e6;
   color: #9f1239;
-}
-
-.calc-keys .plus,
-.calc-keys .eq {
-  grid-row: span 2;
 }
 
 .calc-keys .eq {
