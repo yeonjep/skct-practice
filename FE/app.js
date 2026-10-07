@@ -215,8 +215,17 @@
       raw.breakRemainingMs = 0;
     } else if (raw.onBreak) {
       raw.remainingMs = 0;
-      if (raw.breakRemainingMs <= 0) {
-        raw.breakRemainingMs = Math.max(0, raw.breakMin * 60 + raw.breakSec) * 1000;
+      if (raw.examIndex >= SECTIONS.length - 1 || raw.breakRemainingMs <= 0) {
+        raw.onBreak = false;
+        raw.breakRemainingMs = 0;
+        if (raw.examIndex < SECTIONS.length - 1) {
+          raw.examIndex += 1;
+          raw.section = SECTIONS[raw.examIndex].id;
+          raw.qIndex = 1;
+        }
+        const nextLimit = Math.max(1, Number(raw.sectionMinutes[raw.section]) || 15) * 60 * 1000;
+        const spent = Number(raw.spentMs[raw.section] || 0);
+        raw.remainingMs = Math.max(1, nextLimit - spent);
       }
     } else if (!Number.isFinite(remaining) || remaining < 0) {
       raw.remainingMs = limitMs;
@@ -275,9 +284,12 @@
       ...state,
       running: false,
       lastTick: null,
-      remainingMs: state.running
+      remainingMs: state.running && !state.onBreak
         ? Math.max(0, state.remainingMs - (Date.now() - (state.lastTick || Date.now())))
         : state.remainingMs,
+      breakRemainingMs: state.onBreak && state.running
+        ? Math.max(0, state.breakRemainingMs - (Date.now() - (state.lastTick || Date.now())))
+        : state.breakRemainingMs,
       answerKeys: defaultState().answerKeys,
       paint: els.paint.width ? els.paint.toDataURL("image/png") : state.paint,
       paintW: els.paint.width ? paintCanvasCssSize().w : state.paintW,
@@ -487,29 +499,34 @@
     }, 1000);
   }
 
+  function finishExam() {
+    closeHelpIfOpen();
+    addTimeToCurrent();
+    if (!isPractice()) skipRestOfSection();
+    bankCurrentSpent();
+    state.running = false;
+    state.remainingMs = 0;
+    state.alarmTickMs = 0;
+    state.onBreak = false;
+    state.breakRemainingMs = 0;
+    state.lastTick = null;
+    stopClock();
+    renderTimer();
+    persist();
+    document.title = "종료 · SKCT 연습창";
+    renderOMR();
+    if (els.gradeIntro) {
+      els.gradeIntro.textContent =
+        "5과목이 모두 끝났습니다. 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
+    }
+    openGradeModal(true);
+  }
+
   function onSectionTimeUp() {
     closeHelpIfOpen();
     if (isLastSection()) {
       if (state.alarmOn) beep("finish");
-      addTimeToCurrent();
-      if (!isPractice()) skipRestOfSection();
-      bankCurrentSpent();
-      state.running = false;
-      state.remainingMs = 0;
-      state.alarmTickMs = 0;
-      state.onBreak = false;
-      state.breakRemainingMs = 0;
-      state.lastTick = null;
-      stopClock();
-      renderTimer();
-      persist();
-      document.title = "종료 · SKCT 연습창";
-      renderOMR();
-      if (els.gradeIntro) {
-        els.gradeIntro.textContent =
-          "5과목이 모두 끝났습니다. 각 과목 정답 20개를 붙여 넣고 전체 채점을 누르세요.";
-      }
-      openGradeModal(true);
+      finishExam();
       return;
     }
     if (state.sound && state.alarmOn) beep("section");
@@ -539,9 +556,27 @@
   function beginNextSection(toastText) {
     closeHelpIfOpen();
     const next = state.examIndex + 1;
-    if (next >= SECTIONS.length) return;
     state.onBreak = false;
     state.breakRemainingMs = 0;
+    if (next >= SECTIONS.length) {
+      const left = Math.max(0, sectionLimitMs() - Number(state.spentMs[state.section] || 0));
+      if (left > 0) {
+        state.remainingMs = left;
+        state.alarmTickMs = 0;
+        state.lastTick = Date.now();
+        startQuestionClock();
+        renderOMR();
+        renderTimer();
+        persist();
+        const name = SECTIONS[state.examIndex].name;
+        document.title = `${name} · SKCT 연습창`;
+        showToast(toastText || `${name}을 시작합니다.`);
+        return;
+      }
+      if (state.alarmOn) beep("finish");
+      finishExam();
+      return;
+    }
     state.examIndex = next;
     state.section = SECTIONS[next].id;
     state.qIndex = 1;
@@ -573,7 +608,13 @@
           dt -= state.breakRemainingMs;
           state.breakRemainingMs = 0;
           if (state.alarmOn) beep("begin");
-          beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
+          const upcoming = SECTIONS[state.examIndex + 1] || SECTIONS[state.examIndex];
+          beginNextSection(`${upcoming.name}을 시작합니다.`);
+          if (state.onBreak) {
+            state.onBreak = false;
+            state.breakRemainingMs = 0;
+            dt = 0;
+          }
         }
         continue;
       }
@@ -2163,7 +2204,8 @@
     if (state.onBreak) {
       if (state.running) state.lastTick = Date.now();
       if (state.alarmOn) beep("begin");
-      beginNextSection(`${SECTIONS[state.examIndex + 1].name}을 시작합니다.`);
+      const upcoming = SECTIONS[state.examIndex + 1] || SECTIONS[state.examIndex];
+      beginNextSection(`${upcoming.name}을 시작합니다.`);
       return;
     }
     addTimeToCurrent();
@@ -2441,11 +2483,13 @@
       if (isPractice() && !state.reviewMode) {
         addTimeToCurrent();
         bankCurrentSpent();
+        state.onBreak = false;
+        state.breakRemainingMs = 0;
         state.examIndex = idx;
         state.section = SECTIONS[idx].id;
         state.remainingMs = Math.max(0, sectionLimitMs(state.section) - Number(state.spentMs[state.section] || 0));
         if (state.qIndex < 1 || state.qIndex > SECTION_SIZE) state.qIndex = 1;
-        if (!state.onBreak) startQuestionClock();
+        startQuestionClock();
         renderTimer();
       } else {
         state.section = btn.dataset.section;
