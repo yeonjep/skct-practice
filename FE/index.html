@@ -1,42 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko" data-build="dev">
+<html lang="ko">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="Cache-Control" content="private, max-age=10800" />
     <title>SKCT 연습창</title>
-    <script>
-      (function () {
-        var TTL = 3 * 60 * 60 * 1000;
-        var build = document.documentElement.getAttribute("data-build") || "dev";
-        var key = "skct-file-cache";
-        var now = Date.now();
-        var rec = {};
-        try {
-          rec = JSON.parse(localStorage.getItem(key) || "{}");
-        } catch (err) {
-          rec = {};
-        }
-        var newBuild = rec.build && rec.build !== build;
-        var old = rec.at && now - rec.at >= TTL;
-        if (!newBuild && !old) {
-          if (rec.build !== build || !rec.at) {
-            try {
-              localStorage.setItem(key, JSON.stringify({ build: build, at: now }));
-            } catch (err) {}
-          }
-          return;
-        }
-        try {
-          localStorage.setItem(key, JSON.stringify({ build: build, at: now }));
-        } catch (err) {}
-        var url = new URL(location.href);
-        var token = newBuild ? build : String(Math.floor(now / TTL));
-        if (url.searchParams.get("_c") === token) return;
-        url.searchParams.set("_c", token);
-        location.replace(url.pathname + url.search + url.hash);
-      })();
-    </script>
     <meta name="description" content="&#x200b;" />
     <meta property="og:title" content="SKCT 연습창" />
     <meta property="og:description" content="&#x200b;" />
@@ -48,7 +16,13 @@
     <meta name="twitter:description" content="&#x200b;" />
     <link rel="canonical" href="https://yeonjep.github.io/skct-practice/" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧮</text></svg>" />
-    <link rel="stylesheet" href="styles.css?v=28" />
+    <script>
+      (function () {
+        var v = Math.floor(Date.now() / (3 * 60 * 60 * 1000));
+        window.SKCT_ASSET_V = String(v);
+        document.write('<link rel="stylesheet" href="styles.css?t=' + v + '">');
+      })();
+    </script>
   </head>
   <body>
     <div class="app is-gate" id="app">
@@ -328,10 +302,19 @@
       </div>
     </div>
 
-    <script src="firebase-config.js?v=8"></script>
-    <script src="vendor/firebase-app-compat.js"></script>
-    <script src="vendor/firebase-auth-compat.js"></script>
-    <script src="vendor/firebase-firestore-compat.js"></script>
-    <script src="app.js?v=20"></script>
+    <script>
+      (function () {
+        var v = window.SKCT_ASSET_V || String(Math.floor(Date.now() / (3 * 60 * 60 * 1000)));
+        [
+          "firebase-config.js?t=" + v,
+          "vendor/firebase-app-compat.js",
+          "vendor/firebase-auth-compat.js",
+          "vendor/firebase-firestore-compat.js",
+          "app.js?t=" + v,
+        ].forEach(function (src) {
+          document.write('<script src="' + src + '"><\/script>');
+        });
+      })();
+    </script>
   </body>
 </html>
