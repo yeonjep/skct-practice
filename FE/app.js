@@ -215,6 +215,8 @@
       raw.breakRemainingMs = 0;
     } else if (raw.onBreak) {
       raw.remainingMs = 0;
+      const restCap = Math.max(0, (raw.breakMin * 60 + raw.breakSec) * 1000);
+      if (restCap > 0 && raw.breakRemainingMs > restCap) raw.breakRemainingMs = restCap;
       if (raw.examIndex >= SECTIONS.length - 1 || raw.breakRemainingMs <= 0) {
         raw.onBreak = false;
         raw.breakRemainingMs = 0;
@@ -2383,6 +2385,18 @@
     if ($("#settings-break-sec")) $("#settings-break-sec").value = String(state.breakSec ?? 30);
   }
 
+  function applySavedBreakToCurrent() {
+    const restMs = breakLimitMs();
+    if (!state.onBreak) return;
+    if (restMs <= 0) {
+      const upcoming = SECTIONS[state.examIndex + 1] || SECTIONS[state.examIndex];
+      if (state.alarmOn) beep("begin");
+      beginNextSection(`${upcoming.name}을 시작합니다.`);
+      return;
+    }
+    if (state.breakRemainingMs > restMs) state.breakRemainingMs = restMs;
+  }
+
   function saveSettings() {
     $$("#settings-times input[data-section]").forEach((inp) => {
       state.sectionMinutes[inp.dataset.section] = Math.max(1, Number(inp.value) || 15);
@@ -2390,6 +2404,7 @@
     state.alarmOn = Boolean($("#settings-alarm-on") && $("#settings-alarm-on").checked);
     state.breakMin = Math.min(10, Math.max(0, Math.floor(Number($("#settings-break-min") && $("#settings-break-min").value) || 0)));
     state.breakSec = Math.min(59, Math.max(0, Math.floor(Number($("#settings-break-sec") && $("#settings-break-sec").value) || 0)));
+    applySavedBreakToCurrent();
     if (!startedExam()) state.remainingMs = sectionLimitMs();
     renderTimer();
     persist();
